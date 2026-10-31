@@ -20,7 +20,9 @@ class Sandbox(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='delegate tests ')
         self.addCleanup(self.temp.cleanup)
-        self.base = Path(self.temp.name)
+        # macOS temp paths commonly use /var -> /private/var; fixtures must
+        # use physical paths because production state deliberately rejects links.
+        self.base = Path(self.temp.name).resolve()
         self.home = self.base / 'home'
         self.home.mkdir()
         self.repo = self.base / 'repo with spaces'
@@ -376,7 +378,7 @@ class InstallerTests(Sandbox):
             release.touch()
             if process.poll() is None:
                 process.kill()
-                process.communicate()
+            process.communicate()
 
     def test_explicit_project_destination(self):
         self.install('--dest', str(self.repo / '.claude'))
