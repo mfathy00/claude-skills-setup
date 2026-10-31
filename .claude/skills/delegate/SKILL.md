@@ -1,193 +1,142 @@
 ---
 name: delegate
-description: Orchestrate a full job — plan, assign models and parallel agents, run the workflow, and use Codex for tracks or when Claude usage hits 70%. Use when the user says /delegate, wants to build an app, run a multi-step project, spawn agents, or hand work to Codex.
+description: Plan and coordinate scoped work across Claude agents and explicitly approved Codex tracks. Respect plan-only requests and user approval before dispatch, including at high usage.
 argument-hint: "[what to build / do]"
-allowed-tools: Bash(*) Read Grep Glob Edit Write Agent
+allowed-tools: Read Grep Glob
 ---
 
 # /delegate — orchestrator
 
-You are the **lead orchestrator**, not a lone coder. On `/delegate …` you: (1) check usage, (2) write a plan with agents + models + workflow, (3) get a quick OK when the job is large, (4) run agents (in parallel when independent), (5) use Codex for named tracks or when usage ≥ 70%.
+Coordinate a small, verifiable workflow, not an army of agents for every task.
+Use `$ARGUMENTS` when supplied; otherwise use the latest user request.
+Normal tool permission prompts still apply: this skill does not pre-authorize
+shell commands or file writes.
 
-## 0. Task
+## 1. Establish intent and authorization **before** usage routing
 
-If `$ARGUMENTS` is non-empty, that is the job. Otherwise use the user's latest request.
+- Extract the goal, acceptance criteria, permitted paths, and explicit limits.
+- **Plan only / just plan / don't implement always wins**, even at a usage limit.
+  Do not spawn implementers/testers, run project commands, or launch Codex. Read
+  only what is needed and return a plan (save it only when permitted).
+- Planning does not authorize execution. Publishing, sending, deploying, merging,
+  installing dependencies, and broader access need their own applicable approval.
+- For complexity ≥7, multiple workers, or **any Codex track**, show the short
+  plan, tool/provider, write scope, and likely cost, then wait for approval.
+  An explicit request to execute that exact Codex scope can provide approval;
+  record it rather than asking the same question twice. A general coding request
+  or high usage alone is not consent to send context to another provider.
+- After scope/mode approval, dispatch the approved work automatically. Ask again
+  only when scope, provider, privileges or material cost expectations change.
 
-Treat phrases like "build that app", "do X and Y and Z", "use Codex for …" as one orchestrated job. Split into tracks; do not dump everything into one chat thread.
+## 2. Observe usage; do not invent it
 
-## 1. Usage gate (always first)
+`/usage` is an interactive Claude Code command, not a shell executable. Read an
+available current usage display or ask the user to run it. Record the source and
+observation time. Never derive quota percentage from token counts or guess bars.
+When both session and weekly percentages are known, use their maximum; if only
+one is known, label the other unknown rather than claiming complete visibility.
 
-1. Run `/usage` (or read the live bars).
-2. `usage_pct` = max(session %, weekly %) when available.
+| Observation | Proposed mode (subject to §1) |
+|---|---|
+| Both known, max <50% | Normal Claude workflow |
+| Known value 50–69% | Lean Claude; fewer/smaller workers |
+| Any known value ≥70% | Pause heavy Claude work; propose Codex continuation |
+| Missing, stale, or unavailable | **Unknown**: a short plan/clarification; no automatic expensive fan-out or provider switch |
 
-| usage_pct | Action |
-|----------:|--------|
-| ≥ 70% | Do **not** open a big Claude plan. Write handoff (see §7) and run **Codex-led** workflow. One line to the user. |
-| 50–69% | Prefer Sonnet/Haiku for routine work; still use **Opus** for planning and hard tracks; mark grind/codegen for Codex. |
-| < 50% or unknown | Full Claude orchestration with Opus on plan + hard tasks; still allow Codex tracks if the user asked. |
+At a limit, save permitted progress and wait if Codex continuation has not been
+approved. A plan-only request remains plan-only. The threshold is a preference,
+not a reliable quota API or an authorization mechanism.
 
-## 2. Score complexity (0–10)
+## 3. Plan and model preferences
 
-| Score | Signals |
-|------:|---------|
-| 0–2 | Typos, one-liner, explain a snippet |
-| 3–4 | Single file / clear bug / small test |
-| 5–6 | Multi-file feature, new API surface |
-| 7–8 | Cross-cutting design, ambiguous reqs, perf/security |
-| 9–10 | New app / large migration / architecture |
+Score complexity: 0–2 tiny, 3–4 clear single-file change, 5–6 multi-file feature,
+7–8 cross-cutting/security/ambiguous design, 9–10 new app or migration. Prefer a
+direct response for tiny work; do not spawn a worker just to change one line.
 
-Bump +1 (cap 10) for unclear acceptance criteria, auth/payments/migrations, or multiple products in one ask.
+For score ≥3, use `templates/delegate-plan.md` as a shape, filling it with real
+content. Choose a unique run ID (letters/digits/underscore/hyphen), and save to
+`.claude/delegate-runs/<run-id>/plan.md` when writes are authorized. Never overwrite
+another run. Record paths in chat. No plan needs to be generated by a helper.
 
-**Tiny jobs (0–2):** skip the big plan file; answer or edit directly with Haiku. Still announce model once.
+| Work | Preferred model (not a claim about actual runtime) |
+|---|---|
+| Explore/map | Haiku / delegate-explorer |
+| Routine implementation/tests | Sonnet / delegate-implementer or delegate-tester |
+| Planning, hard/risky tracks, review | Opus / delegate-reviewer |
+| Approved mechanical or quota-relief track | Codex; configured model or explicit user choice |
 
-### Assess → model (always)
+A skill cannot switch the current lead model merely by saying “Opus.” Record
+**requested/preferred** and **observed actual** separately. Use supported model
+selection when available; otherwise disclose the mismatch and ask if the required
+model is unavailable. Unknown actual model stays **unknown**. Do not silently
+substitute a model explicitly required by the user. Agent frontmatter is a
+requested default, not proof of the model that actually ran.
 
-After scoring, fill the Agents table with an explicit model per row:
+## 4. Execute approved phases
 
-1. **You (lead)** write the plan with **Opus** whenever score ≥ 3 (planning is always Opus except tiny 0–2 Haiku answers).
-2. Map each track with the Model map below.
-3. Prefer **Opus** over Sonnet for any hard track even if the default agent file says `sonnet` — pass `model: opus` when spawning, or do that track on the lead thread with Opus.
+1. Give each worker exact goal, allowed paths, exclusions, acceptance checks,
+   requested model, and expected return format.
+2. Parallelize only independent work; never run two writers on the same files.
+   Use separate worktrees for concurrent Codex writers. Unique handoff paths do
+   not isolate a shared working tree. Read-only tracks may share a worktree.
+3. Join each group, inspect changes, then verify before starting dependent work.
+4. Re-observe usage before heavy phases when available. A changed route returns
+   to the authorization gate; it never jumps directly to launch.
+5. Explorer/reviewer use Read/Grep/Glob only. Have the lead/tester run explicitly
+   authorized commands; a read-only reviewer never patches “tiny” issues.
+6. Tester fixes only if its assigned scope authorizes fixes; otherwise report.
 
+## 5. Codex handoff (also used at ≥70%)
 
-## 3. Write the plan (score ≥ 3)
+Requires Bash, Git, Python 3.9+, an initialized Git repository with a commit, and
+an installed/authenticated `codex` executable. Never install or log in silently.
+Run helpers from the project or a subdirectory, not from the skill installation.
 
-Create/overwrite `.claude/delegate-plan.md` using the template shape below (fill every section with real content for **this** job).
+1. Ensure state is excluded from version control (see README privacy section).
+2. After preparatory repository changes are complete, create a draft:
 
-```markdown
-# Delegate plan
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/scripts/write-handoff.sh" \
+     --run-id RUN_ID --track CX1 --reason approved-track --goal "Concrete goal"
+   ```
 
-- Goal: …
-- Complexity: N/10
-- Usage: session≈…% weekly≈…% → mode: full-claude | lean-claude | codex-led
-- Written: <ISO time>
+   If `--run-id` is omitted a new ID is generated and printed. Use a fresh track
+   for every retry. `--model MODEL` requests an exact Codex model if needed.
+3. Fill **all** sections of the printed `handoff.md`: goal, acceptance criteria,
+   done, next steps, key paths, commands/results, constraints. Use `None` honestly
+   where appropriate; remove TODO/TBD placeholders. Include authorization limits,
+   what not to redo, and exact allowed writes. Inspect for secrets/private data.
+4. Only after the user has approved this scope and Codex mode, launch explicitly:
 
-## Acceptance criteria
-- [ ] …
+   ```bash
+   bash "${CLAUDE_SKILL_DIR}/scripts/handoff-to-codex.sh" \
+     --run-id RUN_ID --track CX1 --approve --sandbox workspace-write
+   ```
 
-## Workflow (ordered phases)
-### Phase 1 — …
-- Depends on: (none | phase ids)
-- Parallel OK: yes/no
+   Omit `--sandbox workspace-write` for read-only work. `--plan-only` always
+   suppresses launch. `--approve` records the caller's assertion of user approval;
+   it is not an authentication system and must never be added speculatively.
+5. The launcher validates repository/run/track identity, age (≤24h), unchanged
+   Git context, complete sections, safe paths, and unused output. It refuses
+   missing/stale drafts and never auto-creates a draft to launch. If the repository
+   changed, review the new state and create a fresh track; do not edit metadata to
+   bypass validation. Ignore generated run state when comparing Git snapshots.
+6. Codex runs non-interactively inside the requested sandbox with network disabled
+   and no permission escalation. A denied action is a blocker, not a reason to
+   weaken the sandbox. The process exit code and nonempty `result.md` are checked;
+   acceptance criteria still require review. Read `outcome.json`, integrate only
+   scoped changes, and run appropriate tests. Never infer actual model or quota
+   from the requested CLI flags.
 
-### Phase 2 — …
-…
+Each track owns `.claude/delegate-runs/<run-id>/<track>/` with `handoff.md`,
+`manifest.json`, `started.json`, `result.md`, and `outcome.json`. Start markers
+prevent duplicate launches. A missing outcome means interrupted/uncertain, not
+success; inspect changes before creating a new track. Do not auto-retry paid work.
+Legacy shared handoff files are not launched: migrate by creating a new draft.
 
-## Agents
-| ID | Role | Model | Effort | Phase | Parallel group | Owner | Notes |
-|----|------|-------|--------|-------|----------------|-------|-------|
-| A1 | explore | haiku | low | 1 | G1 | Claude Agent | … |
-| A2 | plan-lead | opus | high | 0 | — | Lead (you) | always Opus for plan |
-| A3 | implement-api | sonnet or opus | high | 2 | G2 | Claude Agent | opus if hard |
-| A4 | implement-ui | sonnet | high | 2 | G2 | Claude Agent | parallel with A3 |
-| A5 | tests | sonnet | medium | 3 | G3 | Claude Agent | after G2 |
-| A6 | review | opus | high | 4 | G4 | Claude Agent | hard / risky changes |
-| CX1 | scaffold/codegen | codex | — | 2 | G2 | Codex CLI | user asked / usage |
+## 6. Finish honestly
 
-## Model policy
-- Lead (you): **Opus** for planning and hard orchestration decisions
-- Default worker: Sonnet (Haiku for explore)
-- Hard tasks (≥7 / auth / security / ambiguous): **Opus**
-- Escalation: Sonnet → Opus when a track proves hard; Opus → Codex only for grind or usage ≥ 70%
-
-## Codex usage
-- Tracks assigned to Codex: …
-- Handoff file: `.claude/handoff-to-codex.md` (and per-track `.claude/handoff-cxN.md` if several)
-
-## Risks / open questions
-- …
-```
-
-### Model map (assess → pick)
-
-Score the work, then assign models. **Opus is required for planning and hard tasks.**
-
-| Work type | Model | Effort |
-|-----------|-------|--------|
-| Explore / grep / map repo | Haiku or `delegate-explorer` | low |
-| Single-file / boilerplate / clear bug | Haiku or Sonnet | low–medium |
-| Normal feature implementation | Sonnet (`delegate-implementer`) | high |
-| **Planning** (write `.claude/delegate-plan.md`, phases, agent table) | **Opus** (lead) | high–max |
-| **Hard tasks** (score ≥ 7, architecture, ambiguous design, auth/payments/migrations, security/perf, cross-cutting) | **Opus** (lead and/or hard implement/review agents) | high–max |
-| Hard review / acceptance gates on risky changes | **Opus** (`delegate-reviewer` override or lead review) | high |
-| Mechanical codegen / long grind | Codex | — |
-| Usage ≥ 70% | Codex leads; Claude only for tiny coordination | — |
-
-**Hard-task rule:** if complexity ≥ 7, or the track touches auth, payments, migrations, security, performance, or unclear requirements → assign **Opus**, not Sonnet. Announce the chosen model in the Agents table.
-
-### When to spawn **more than one** agent
-
-Spawn parallel `Agent` workers when tracks are **independent** (different directories, no shared unfinished files): e.g. API + UI, tests for finished modules, explore frontend vs backend.
-
-Do **not** parallelize writers on the same file. Serialize those.
-
-Prefer project agents if present:
-
-- `delegate-explorer`
-- `delegate-implementer`
-- `delegate-tester`
-- `delegate-reviewer`
-
-Otherwise use built-in `Explore` / `general-purpose` with a crisp task prompt that includes the phase goal, paths, and acceptance checks.
-
-## 4. Confirm with the user
-
-**Score ≥ 7 or multiple agents/Codex tracks:** show a short plan summary in chat (phases + agent table condensed) and ask: proceed / change / stop. Wait for yes before spawning.
-
-**Score 3–6 with a clear ask:** show the one-line summary + path to `.claude/delegate-plan.md`, then proceed unless they said "plan only".
-
-**User said "just plan" / "don't implement":** stop after writing the plan.
-
-## 5. Execute the workflow
-
-1. Mark the active phase in `.claude/delegate-plan.md`.
-2. For each **parallel group**, start all ready agents in that group (Agent tool / subagents). Give each:
-   - Exact goal and out-of-scope
-   - Paths they may touch
-   - Model/effort from the table
-   - What to return (summary + files changed + how to verify)
-3. Wait for the group; merge results; fix conflicts yourself on the lead thread.
-4. Run the next phase. Re-check `/usage` before each new heavy phase; if ≥ 70%, jump to §7 mid-flight (write progress into the handoff first).
-5. After implementation phases, run tester then reviewer agents when the job warrants it.
-6. Verify acceptance criteria (tests/commands). Update checkboxes in the plan file.
-
-Announce progress in short lines, e.g. `Phase 2 · G2: A2 API + A3 UI running in parallel.`
-
-## 6. Using Codex inside the workflow (not only at 70%)
-
-Assign a Codex track when:
-
-- The user asked for Codex, or
-- The track is long mechanical codegen, or
-- Usage is 50–69% and you want to save Claude for design/review, or
-- Usage ≥ 70% (Codex-led).
-
-For each Codex track:
-
-1. Write `.claude/handoff-to-codex.md` (or `.claude/handoff-cxN.md`) with Goal / Done / Next / Key files / Commands (use `${CLAUDE_SKILL_DIR}/scripts/write-handoff.sh` then fill gaps).
-2. Launch with `${CLAUDE_SKILL_DIR}/scripts/handoff-to-codex.sh` when `codex` is on PATH; otherwise print the exact command for the user.
-3. Continue other **independent** Claude agents meanwhile if usage allows; do not duplicate the Codex track in Claude.
-4. When Codex returns (or user pastes results), integrate, run tests, update the plan.
-
-## 7. Emergency Codex handoff (usage ≥ 70% or limit hit)
-
-1. Update `.claude/delegate-plan.md` with what finished and what’s left.
-2. Write a full `.claude/handoff-to-codex.md` (entire remaining workflow + acceptance criteria).
-3. Launch Codex; **stop** further heavy Claude implementation on this job.
-4. One-line status to the user with file paths.
-
-## 8. Finish
-
-- Summarize: what shipped, which agents ran, which models, whether Codex was used.
-- Point to `.claude/delegate-plan.md` and any handoff files.
-- List leftover risks / follow-ups as a short checklist.
-- Do not claim done until acceptance criteria are checked or explicitly waived by the user.
-
-## Quick examples
-
-**`/delegate fix typo in README`** → score 1 → Haiku, no plan file.
-
-**`/delegate add billing webhook + tests`** → **Opus** plans (payments = hard); Sonnet or Opus implementer; tester; maybe parallel after code.
-
-**`/delegate build a small expense tracker app with auth, API, and web UI; use Codex for the UI scaffold`** → **Opus** plans (auth + new app); Haiku explore; Opus/Sonnet API; Codex UI; parallel where safe; confirm before spawn.
-
-**`/delegate …` at 80% usage** → codex-led handoff of the whole remaining plan.
+Report what changed, checks actually run and their results, workers/providers
+actually invoked, preferred versus verified models, plan/result paths, and
+remaining risks. A successful CLI exit is not proof of task completion. Do not
+claim done until acceptance criteria pass or the user explicitly waives them.

@@ -11,5 +11,7 @@ Rules:
 - Match existing project style
 - Touch only allowed paths when listed
 - Add or update tests if the track says so
-- If the task prompt says model Opus / hard track, treat the work as high-stakes (auth, payments, migrations, security, ambiguous design) and be extra careful
+- Treat auth, payments, migrations, security, and ambiguous design as high-risk regardless of the model label
+- The model field is a request, not proof of actual runtime; report actual model as unknown when not exposed
+- Do not publish, deploy, merge, or expand permissions without separate authorization
 - Return: summary, files changed, how to verify, blockers

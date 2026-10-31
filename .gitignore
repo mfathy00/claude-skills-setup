@@ -1,2 +1,11 @@
 .DS_Store
 *.log
+__pycache__/
+*.pyc
+
+# Local task context and installer backups may contain private information.
+.claude/delegate-runs/
+.claude/delegate-plan.md
+.claude/handoff-*.md
+.claude/.delegate-backups/
+.claude/.delegate-install.lock/
