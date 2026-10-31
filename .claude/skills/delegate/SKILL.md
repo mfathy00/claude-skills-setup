@@ -1,186 +1,175 @@
 ---
 name: delegate
-description: Route work by complexity across Claude models, check plan usage, and hand off to Codex when usage is at or above 70%. Use when starting a non-trivial coding task, when the user says delegate / switch models / check usage, or when a limit warning appears.
-argument-hint: "[task description]"
+description: Orchestrate a full job — plan, assign models and parallel agents, run the workflow, and use Codex for tracks or when Claude usage hits 70%. Use when the user says /delegate, wants to build an app, run a multi-step project, spawn agents, or hand work to Codex.
+argument-hint: "[what to build / do]"
 allowed-tools: Bash(*) Read Grep Glob Edit Write Agent
 ---
 
-# Delegate: model routing + Codex handoff
+# /delegate — orchestrator
 
-Run this skill at the start of non-trivial work and again whenever usage may have climbed (long sessions, big refactors, many tool calls).
+You are the **lead orchestrator**, not a lone coder. On `/delegate …` you: (1) check usage, (2) write a plan with agents + models + workflow, (3) get a quick OK when the job is large, (4) run agents (in parallel when independent), (5) use Codex for named tracks or when usage ≥ 70%.
 
-## 0. Arguments
+## 0. Task
 
-If `$ARGUMENTS` is non-empty, that is the task. Otherwise use the user's latest request as the task.
+If `$ARGUMENTS` is non-empty, that is the job. Otherwise use the user's latest request.
 
-## 1. Check usage first (hard gate)
+Treat phrases like "build that app", "do X and Y and Z", "use Codex for …" as one orchestrated job. Split into tracks; do not dump everything into one chat thread.
 
-Before choosing a model or doing heavy work:
+## 1. Usage gate (always first)
 
-1. Run `/usage` (or read the live usage indicator if already shown).
-2. Parse the **current session** (5-hour) bar and the **weekly** bar if shown.
-3. Take `usage_pct` = the higher of those two percentages.
+1. Run `/usage` (or read the live bars).
+2. `usage_pct` = max(session %, weekly %) when available.
 
-If either bar is **≥ 70%**:
-
-- Do **not** start a large new Claude turn.
-- Jump to **§4 Codex handoff** immediately with reason `usage≥70%`.
-- Tell the user in one line that usage is high and you are handing off to Codex.
-
-If usage cannot be read (API-key / pay-as-you-go with no bar):
-
-- Skip the gate.
-- Still write a short usage note in the handoff file if you later switch models for other reasons.
+| usage_pct | Action |
+|----------:|--------|
+| ≥ 70% | Do **not** open a big Claude plan. Write handoff (see §7) and run **Codex-led** workflow. One line to the user. |
+| 50–69% | Prefer Sonnet/Haiku workers; reserve Opus for planning only; mark heavy tracks for Codex. |
+| < 50% or unknown | Full Claude orchestration; still allow Codex tracks if the user asked. |
 
 ## 2. Score complexity (0–10)
 
-Score the task once. Be conservative: when unsure, score higher.
-
 | Score | Signals |
 |------:|---------|
-| 0–2 | Typo, rename, one-liner, explain a short snippet |
-| 3–4 | Single file change, clear bugfix, small test |
-| 5–6 | Multi-file feature, non-trivial refactor, new API surface |
-| 7–8 | Cross-cutting design, ambiguous requirements, perf/security |
-| 9–10 | Architecture, large migration, novel algorithms, high blast radius |
+| 0–2 | Typos, one-liner, explain a snippet |
+| 3–4 | Single file / clear bug / small test |
+| 5–6 | Multi-file feature, new API surface |
+| 7–8 | Cross-cutting design, ambiguous reqs, perf/security |
+| 9–10 | New app / large migration / architecture |
 
-Also bump +1 (cap 10) if any of these apply: unclear acceptance criteria, touches auth/payments/data migration, or needs a design choice first.
+Bump +1 (cap 10) for unclear acceptance criteria, auth/payments/migrations, or multiple products in one ask.
 
-## 3. Pick Claude model and effort
+**Tiny jobs (0–2):** skip the big plan file; answer or edit directly with Haiku. Still announce model once.
 
-Map score → model. Use `/model` (or the Task/Agent model override for subagents) for this turn only.
+## 3. Write the plan (score ≥ 3)
 
-| Score | Model | Effort | Style |
-|------:|-------|--------|-------|
-| 0–2 | Haiku (fastest available) | low | Answer directly; minimal exploration |
-| 3–4 | Sonnet | medium | Focused edits; read only what you need |
-| 5–6 | Sonnet | high | Plan briefly, then implement |
-| 7–8 | Opus (or strongest available) | high | Explore, propose approach, then implement |
-| 9–10 | Opus | max / xhigh | Design first; get user OK on approach before large edits |
-
-Rules:
-
-- Prefer the **cheapest** model that can finish the job well.
-- Do not escalate mid-task unless the current model is stuck after a real attempt.
-- If Opus is unavailable, use the strongest allowed Sonnet and say so once.
-- For forked subagents (`Agent` / explore), pass the same model tier so children do not silently burn Opus.
-
-Announce in one short line before working, e.g. `Complexity 6 → Sonnet (high). Usage ~42%. Continuing here.`
-
-## 4. Codex handoff (usage ≥ 70% or user asks)
-
-Goal: Codex can continue **without** re-discovering context.
-
-### 4.1 Write the handoff pack
-
-Create or overwrite `.claude/handoff-to-codex.md` in the project root (create `.claude/` if needed) with:
+Create/overwrite `.claude/delegate-plan.md` using the template shape below (fill every section with real content for **this** job).
 
 ```markdown
-# Handoff: Claude Code → Codex
+# Delegate plan
 
-- Written: <ISO timestamp>
-- Reason: <usage≥70% | user request | model limit | other>
-- Claude usage: session=<n>% weekly=<n>% (or unknown)
-- Complexity score: <0–10>
-- Last Claude model: <name>
-- Branch: <git branch>
-- HEAD: <short sha>
-- Working tree: <clean | dirty>
+- Goal: …
+- Complexity: N/10
+- Usage: session≈…% weekly≈…% → mode: full-claude | lean-claude | codex-led
+- Written: <ISO time>
 
-## Goal
-<one paragraph: what done looks like>
+## Acceptance criteria
+- [ ] …
 
-## Done already
-- ...
+## Workflow (ordered phases)
+### Phase 1 — …
+- Depends on: (none | phase ids)
+- Parallel OK: yes/no
 
-## In progress
-- ...
+### Phase 2 — …
+…
 
-## Next concrete steps (ordered)
-1. ...
-2. ...
+## Agents
+| ID | Role | Model | Effort | Phase | Parallel group | Owner | Notes |
+|----|------|-------|--------|-------|----------------|-------|-------|
+| A1 | explore | haiku/sonnet | low | 1 | G1 | Claude Agent | … |
+| A2 | implement-api | sonnet | high | 2 | G2 | Claude Agent | … |
+| A3 | implement-ui | sonnet | high | 2 | G2 | Claude Agent | parallel with A2 |
+| A4 | tests | sonnet | medium | 3 | G3 | Claude Agent | after G2 |
+| CX1 | scaffold/codegen | codex | — | 2 | G2 | Codex CLI | user asked / usage |
 
-## Key files
-- path — why it matters
+## Model policy
+- Lead (you): …
+- Default worker: …
+- Escalation: …
 
-## Commands already run (and results)
-- `...` → ...
+## Codex usage
+- Tracks assigned to Codex: …
+- Handoff file: `.claude/handoff-to-codex.md` (and per-track `.claude/handoff-cxN.md` if several)
 
-## Constraints / do not
-- ...
-
-## Open questions
-- ...
+## Risks / open questions
+- …
 ```
 
-Fill every section from the real session. Prefer facts over speculation. Include failing test names and exact error lines when you have them.
+### Model map (workers)
 
-Also run the helper (preferred) so a machine-readable snapshot is saved:
+| Work type | Model | Effort |
+|-----------|-------|--------|
+| Explore / grep / map repo | Haiku or Explore agent | low |
+| Single-file / boilerplate | Haiku or Sonnet | low–medium |
+| Feature implementation | Sonnet | high |
+| Architecture / ambiguous design | Opus (lead only) | high–max |
+| Mechanical codegen / long grind | Codex | — |
+| Usage ≥ 70% | Codex leads; Claude only for tiny coordination | — |
 
-```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/write-handoff.sh \
-  --reason "usage>=70%" \
-  --goal "$ARGUMENTS"
-```
+### When to spawn **more than one** agent
 
-If the helper is missing, write the markdown file yourself as above.
+Spawn parallel `Agent` workers when tracks are **independent** (different directories, no shared unfinished files): e.g. API + UI, tests for finished modules, explore frontend vs backend.
 
-### 4.2 Freeze git state for Codex
+Do **not** parallelize writers on the same file. Serialize those.
 
-Without committing secrets:
+Prefer project agents if present:
 
-1. `git status -sb` and `git diff` (staged + unstaged) → append a short summary under **In progress**.
-2. If there are important uncommitted edits, leave them on disk; do **not** `git reset --hard`.
-3. Optionally stash only if the user asked; default is leave the tree as-is for Codex.
+- `delegate-explorer`
+- `delegate-implementer`
+- `delegate-tester`
+- `delegate-reviewer`
 
-### 4.3 Launch or instruct Codex
+Otherwise use built-in `Explore` / `general-purpose` with a crisp task prompt that includes the phase goal, paths, and acceptance checks.
 
-Prefer launching Codex in the same repo with the handoff as the seed prompt:
+## 4. Confirm with the user
 
-```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/handoff-to-codex.sh
-```
+**Score ≥ 7 or multiple agents/Codex tracks:** show a short plan summary in chat (phases + agent table condensed) and ask: proceed / change / stop. Wait for yes before spawning.
 
-That script:
+**Score 3–6 with a clear ask:** show the one-line summary + path to `.claude/delegate-plan.md`, then proceed unless they said "plan only".
 
-1. Ensures `.claude/handoff-to-codex.md` exists.
-2. Starts Codex (`codex`) in the project root with a prompt that says: read the handoff file, continue from **Next concrete steps**, do not redo completed work.
+**User said "just plan" / "don't implement":** stop after writing the plan.
 
-If `codex` is not on PATH:
+## 5. Execute the workflow
 
-- Tell the user the handoff file path.
-- Give them this exact command to run:
+1. Mark the active phase in `.claude/delegate-plan.md`.
+2. For each **parallel group**, start all ready agents in that group (Agent tool / subagents). Give each:
+   - Exact goal and out-of-scope
+   - Paths they may touch
+   - Model/effort from the table
+   - What to return (summary + files changed + how to verify)
+3. Wait for the group; merge results; fix conflicts yourself on the lead thread.
+4. Run the next phase. Re-check `/usage` before each new heavy phase; if ≥ 70%, jump to §7 mid-flight (write progress into the handoff first).
+5. After implementation phases, run tester then reviewer agents when the job warrants it.
+6. Verify acceptance criteria (tests/commands). Update checkboxes in the plan file.
 
-```bash
-codex "Read .claude/handoff-to-codex.md and continue from Next concrete steps. Do not redo Done already. Report when the Goal is met."
-```
+Announce progress in short lines, e.g. `Phase 2 · G2: A2 API + A3 UI running in parallel.`
 
-### 4.4 Stop Claude work on this task
+## 6. Using Codex inside the workflow (not only at 70%)
 
-After a successful handoff write (and launch if possible):
+Assign a Codex track when:
 
-- Stop implementing this task in Claude Code.
-- One-line status to the user: handoff written, Codex started (or needs manual start), path to the file.
-- Do not keep burning Claude tokens on the same task until usage drops or the user says to resume in Claude.
+- The user asked for Codex, or
+- The track is long mechanical codegen, or
+- Usage is 50–69% and you want to save Claude for design/review, or
+- Usage ≥ 70% (Codex-led).
 
-## 5. Mid-task usage recheck
+For each Codex track:
 
-While still on Claude:
+1. Write `.claude/handoff-to-codex.md` (or `.claude/handoff-cxN.md`) with Goal / Done / Next / Key files / Commands (use `${CLAUDE_SKILL_DIR}/scripts/write-handoff.sh` then fill gaps).
+2. Launch with `${CLAUDE_SKILL_DIR}/scripts/handoff-to-codex.sh` when `codex` is on PATH; otherwise print the exact command for the user.
+3. Continue other **independent** Claude agents meanwhile if usage allows; do not duplicate the Codex track in Claude.
+4. When Codex returns (or user pastes results), integrate, run tests, update the plan.
 
-- Recheck usage after large batches of tool calls, before starting a new major phase, or if a limit warning appears.
-- If `usage_pct` crosses 70% mid-task → §4 immediately (write handoff with current progress first).
+## 7. Emergency Codex handoff (usage ≥ 70% or limit hit)
 
-## 6. Returning from Codex → Claude
+1. Update `.claude/delegate-plan.md` with what finished and what’s left.
+2. Write a full `.claude/handoff-to-codex.md` (entire remaining workflow + acceptance criteria).
+3. Launch Codex; **stop** further heavy Claude implementation on this job.
+4. One-line status to the user with file paths.
 
-When the user is back on Claude and usage is under 70%:
+## 8. Finish
 
-1. Read `.claude/handoff-from-codex.md` if present, else ask what Codex finished.
-2. Verify with tests / diff before claiming done.
-3. Delete or archive handoff files only if the user wants cleanup.
+- Summarize: what shipped, which agents ran, which models, whether Codex was used.
+- Point to `.claude/delegate-plan.md` and any handoff files.
+- List leftover risks / follow-ups as a short checklist.
+- Do not claim done until acceptance criteria are checked or explicitly waived by the user.
 
 ## Quick examples
 
-- "fix typo in README" → score 1 → Haiku, no handoff.
-- "add pagination to the users API + tests" → score 5–6 → Sonnet high.
-- "redesign auth to passkeys across web + mobile" → score 9 → Opus; if usage ≥70% → Codex handoff instead.
-- User: "we're at 80%, keep going" → §4 only, no more Claude implementation.
+**`/delegate fix typo in README`** → score 1 → Haiku, no plan file.
+
+**`/delegate add billing webhook + tests`** → plan with implementer + tester; Sonnet; maybe parallel test agent after code.
+
+**`/delegate build a small expense tracker app with auth, API, and web UI; use Codex for the UI scaffold`** → plan phases; Claude explores + API; Codex UI track; parallel where safe; confirm before spawn.
+
+**`/delegate …` at 80% usage** → codex-led handoff of the whole remaining plan.

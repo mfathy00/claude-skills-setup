@@ -1,25 +1,37 @@
-# Claude Skills Setup — `/delegate`
+# Claude Skills Setup — `/delegate` orchestrator
 
-A [Claude Code](https://code.claude.com) personal skill that **routes coding work by complexity**, **watches your plan usage**, and **hands off to OpenAI Codex** when usage hits **70%** so you can keep shipping without waiting for the Claude limit to reset.
+A [Claude Code](https://code.claude.com) skill that acts as a **lead agent**: it writes a plan, assigns **models + parallel subagents**, runs the workflow, and uses **OpenAI Codex** for named tracks or when Claude usage hits **70%**.
 
 Repo: [mfathy00/claude-skills-setup](https://github.com/mfathy00/claude-skills-setup)
 
 ## What it is (for work)
 
-On a normal day you ask Claude Code to build features, fix bugs, or refactor. This skill turns that into a small ops workflow:
+You say something like:
 
-| Step | What happens |
-|------|----------------|
-| 1. Score the task | 0–10 from size, ambiguity, blast radius (auth, payments, migrations bump the score) |
-| 2. Pick a model | Cheap/fast for small jobs; stronger models only when the task needs them |
-| 3. Check usage | Reads `/usage` (session + weekly). Takes the higher % |
-| 4. Stay or switch | Under 70% → keep going on Claude. At/above 70% → stop heavy Claude work and hand off to Codex with a written brief |
+```text
+/delegate build an expense tracker with auth, API, and web UI; use Codex for the UI scaffold; I also want tests and a short review
+```
 
-**Why that matters at work:** you burn less premium quota on typos and one-liners, reserve Opus/Sonnet for real design work, and when the five-hour or weekly bar fills up mid-ticket, Codex gets a clean handoff file instead of starting from zero.
+Claude (as orchestrator) will:
+
+1. Check `/usage`
+2. Score complexity and write `.claude/delegate-plan.md` (phases, agents, models, Codex tracks)
+3. Confirm on large jobs, then **spawn agents** (explorer / implementer / tester / reviewer) — **in parallel** when tracks don’t share files
+4. Hand Codex its own handoff file for UI/codegen or when usage ≥ 70%
+5. Merge results, verify acceptance criteria, summarize
+
+| Piece | Role |
+|-------|------|
+| `/delegate` skill | Lead orchestrator (plan + dispatch) |
+| `delegate-explorer` | Read-only map of the repo |
+| `delegate-implementer` | One feature track |
+| `delegate-tester` | Run/fix tests |
+| `delegate-reviewer` | Acceptance + risk review |
+| Codex | Mechanical / long tracks or high Claude usage |
 
 ## Install on any machine
 
-### Personal (all projects on that machine)
+### Personal (all projects)
 
 ```bash
 git clone https://github.com/mfathy00/claude-skills-setup.git
@@ -31,85 +43,87 @@ Windows PowerShell:
 
 ```powershell
 git clone https://github.com/mfathy00/claude-skills-setup.git
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude\skills" | Out-Null
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude\skills","$env:USERPROFILE\.claude\agents" | Out-Null
 Copy-Item -Recurse -Force .\claude-skills-setup\.claude\skills\delegate "$env:USERPROFILE\.claude\skills\"
+Copy-Item -Force .\claude-skills-setup\.claude\agents\delegate-*.md "$env:USERPROFILE\.claude\agents\"
 ```
 
-### One repo (share with the team via git)
+### One repo (share with the team)
 
 ```bash
-mkdir -p .claude/skills
-cp -R /path/to/claude-skills-setup/.claude/skills/delegate .claude/skills/
-git add .claude/skills/delegate && git commit -m "Add /delegate skill"
+cp -R claude-skills-setup/.claude/skills/delegate .claude/skills/
+cp claude-skills-setup/.claude/agents/delegate-*.md .claude/agents/
+git add .claude && git commit -m "Add /delegate orchestrator + agents"
 ```
 
-Requires Claude Code. Codex handoff needs the `codex` CLI on `PATH` (optional until you actually hit 70%).
+Needs Claude Code. Codex tracks need the `codex` CLI on `PATH` (optional until you use them).
 
-## How to use
-
-In a project folder, start Claude Code (`claude`), then:
+## How to use at work
 
 ```text
 /delegate
 /delegate implement pagination on the users API with tests
-/delegate we're at high usage — hand off to Codex
+/delegate build that app and do X Y Z; Codex for the UI
+/delegate plan only: migrate payments to Stripe
 ```
-
-Or describe a hard task in plain language; Claude should load the skill from its description.
 
 ### What you should see
 
-- One short line like: `Complexity 6 → Sonnet (high). Usage ~42%. Continuing here.`
-- If usage ≥ 70%: it writes `.claude/handoff-to-codex.md` and tries to launch Codex (or prints the command if `codex` isn’t installed)
+- A plan file: `.claude/delegate-plan.md` (agents table, phases, models, Codex)
+- Progress lines: `Phase 2 · G2: API + UI agents running in parallel`
+- If usage ≥ 70%: `.claude/handoff-to-codex.md` and Codex-led continuation
 
-### Handoff file
+### Example agent table (filled by the skill)
 
-Path: `.claude/handoff-to-codex.md` (project-local, not committed by this skill)
+| ID | Role | Model | Phase | Parallel | Owner |
+|----|------|-------|-------|----------|-------|
+| A1 | explore | haiku | 1 | G1 | Claude |
+| A2 | implement-api | sonnet | 2 | G2 | Claude |
+| A3 | implement-ui | — | 2 | G2 | Codex |
+| A4 | tests | sonnet | 3 | G3 | Claude |
+| A5 | review | sonnet | 4 | G4 | Claude |
 
-Includes goal, done / in progress, next steps, key files, git status — so Codex continues the same ticket.
+## Model + usage policy
 
-Helpers (Git Bash / WSL / macOS / Linux):
+| Complexity | Lead behavior |
+|-----------:|---------------|
+| 0–2 | No big plan; Haiku direct |
+| 3–6 | Plan file; often proceed after a one-line summary |
+| 7–10 | Show plan; wait for OK before spawning |
 
-```bash
-bash ~/.claude/skills/delegate/scripts/write-handoff.sh --reason "usage>=70%" --goal "finish the PR"
-bash ~/.claude/skills/delegate/scripts/handoff-to-codex.sh
-```
-
-## Model routing (defaults)
-
-| Complexity | Typical work | Model tier |
-|-----------:|--------------|------------|
-| 0–2 | Typos, renames, short explanations | Haiku (fastest) |
-| 3–4 | Single-file fix, small test | Sonnet |
-| 5–6 | Multi-file feature, clear refactor | Sonnet (high effort) |
-| 7–8 | Cross-cutting design, ambiguous reqs | Opus / strongest |
-| 9–10 | Architecture, large migration | Opus (max effort); confirm approach first |
-
-Edit thresholds in `.claude/skills/delegate/SKILL.md` if your team prefers different cutoffs or a different handoff % than 70.
+| Usage | Mode |
+|------:|------|
+| < 50% | Full Claude orchestration |
+| 50–69% | Lean Claude; push grind to Codex |
+| ≥ 70% | Codex-led; Claude stops heavy implementation |
 
 ## Layout
 
 ```text
 .claude/skills/delegate/
-  SKILL.md                 # Claude Code skill
-  scripts/
-    write-handoff.sh       # Snapshot git + handoff markdown
-    handoff-to-codex.sh    # Launch Codex with the handoff prompt
-install.sh                 # Copy skill into ~/.claude/skills/delegate
+  SKILL.md
+  templates/delegate-plan.md
+  scripts/write-handoff.sh
+  scripts/handoff-to-codex.sh
+.claude/agents/
+  delegate-explorer.md
+  delegate-implementer.md
+  delegate-tester.md
+  delegate-reviewer.md
+install.sh
 README.md
 ```
 
 ## Update
 
 ```bash
-cd claude-skills-setup && git pull
-./install.sh
+cd claude-skills-setup && git pull && ./install.sh
 ```
 
 ## Privacy
 
-This repo has **no secrets** — only skill text and scripts. Handoff files are written in **your** project’s `.claude/` when you run the skill; they are not part of this repository.
+No secrets in this repo — skill text, agents, and scripts only. Plan/handoff files are written under **your project’s** `.claude/` when you run `/delegate`.
 
 ## License
 
-Use and adapt freely for your own Claude Code / Codex workflow.
+Use and adapt freely for your Claude Code / Codex workflow.
