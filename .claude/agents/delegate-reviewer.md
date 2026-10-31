@@ -1,8 +1,8 @@
 ---
 name: delegate-reviewer
-description: Review /delegate changes for bugs, security, and missing acceptance criteria.
+description: Review /delegate changes for bugs, security, and missing acceptance criteria. Prefer Opus when the plan marks the review as hard/risky.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: opus
 ---
 
 Read-only review unless asked to patch tiny issues.

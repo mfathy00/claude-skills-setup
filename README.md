@@ -78,23 +78,35 @@ Needs Claude Code. Codex tracks need the `codex` CLI on `PATH` (optional until y
 | ID | Role | Model | Phase | Parallel | Owner |
 |----|------|-------|-------|----------|-------|
 | A1 | explore | haiku | 1 | G1 | Claude |
-| A2 | implement-api | sonnet | 2 | G2 | Claude |
-| A3 | implement-ui | — | 2 | G2 | Codex |
-| A4 | tests | sonnet | 3 | G3 | Claude |
-| A5 | review | sonnet | 4 | G4 | Claude |
+| A2 | plan-lead | **opus** | 0 | — | Lead |
+| A3 | implement-api | sonnet or **opus** | 2 | G2 | Claude |
+| A4 | implement-ui | — | 2 | G2 | Codex |
+| A5 | tests | sonnet | 3 | G3 | Claude |
+| A6 | review | **opus** | 4 | G4 | Claude |
 
 ## Model + usage policy
+
+The skill **assesses** each track and picks a model:
+
+| Work | Model |
+|------|-------|
+| Explore / map | Haiku |
+| Normal implement / tests | Sonnet |
+| **Planning** (always for score ≥ 3) | **Opus** |
+| **Hard tasks** (score ≥ 7, auth, payments, migrations, security, perf, ambiguous) | **Opus** |
+| Long grind / codegen | Codex |
+| Usage ≥ 70% | Codex-led |
 
 | Complexity | Lead behavior |
 |-----------:|---------------|
 | 0–2 | No big plan; Haiku direct |
-| 3–6 | Plan file; often proceed after a one-line summary |
-| 7–10 | Show plan; wait for OK before spawning |
+| 3–6 | Opus plans; Sonnet workers unless a track is hard |
+| 7–10 | Opus plans + hard tracks; show plan; wait for OK before spawning |
 
 | Usage | Mode |
 |------:|------|
-| < 50% | Full Claude orchestration |
-| 50–69% | Lean Claude; push grind to Codex |
+| < 50% | Full Claude orchestration (Opus on plan + hard) |
+| 50–69% | Lean Claude; Opus still for plan/hard; grind → Codex |
 | ≥ 70% | Codex-led; Claude stops heavy implementation |
 
 ## Layout

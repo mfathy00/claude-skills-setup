@@ -23,8 +23,8 @@ Treat phrases like "build that app", "do X and Y and Z", "use Codex for …" as 
 | usage_pct | Action |
 |----------:|--------|
 | ≥ 70% | Do **not** open a big Claude plan. Write handoff (see §7) and run **Codex-led** workflow. One line to the user. |
-| 50–69% | Prefer Sonnet/Haiku workers; reserve Opus for planning only; mark heavy tracks for Codex. |
-| < 50% or unknown | Full Claude orchestration; still allow Codex tracks if the user asked. |
+| 50–69% | Prefer Sonnet/Haiku for routine work; still use **Opus** for planning and hard tracks; mark grind/codegen for Codex. |
+| < 50% or unknown | Full Claude orchestration with Opus on plan + hard tasks; still allow Codex tracks if the user asked. |
 
 ## 2. Score complexity (0–10)
 
@@ -39,6 +39,15 @@ Treat phrases like "build that app", "do X and Y and Z", "use Codex for …" as 
 Bump +1 (cap 10) for unclear acceptance criteria, auth/payments/migrations, or multiple products in one ask.
 
 **Tiny jobs (0–2):** skip the big plan file; answer or edit directly with Haiku. Still announce model once.
+
+### Assess → model (always)
+
+After scoring, fill the Agents table with an explicit model per row:
+
+1. **You (lead)** write the plan with **Opus** whenever score ≥ 3 (planning is always Opus except tiny 0–2 Haiku answers).
+2. Map each track with the Model map below.
+3. Prefer **Opus** over Sonnet for any hard track even if the default agent file says `sonnet` — pass `model: opus` when spawning, or do that track on the lead thread with Opus.
+
 
 ## 3. Write the plan (score ≥ 3)
 
@@ -66,16 +75,19 @@ Create/overwrite `.claude/delegate-plan.md` using the template shape below (fill
 ## Agents
 | ID | Role | Model | Effort | Phase | Parallel group | Owner | Notes |
 |----|------|-------|--------|-------|----------------|-------|-------|
-| A1 | explore | haiku/sonnet | low | 1 | G1 | Claude Agent | … |
-| A2 | implement-api | sonnet | high | 2 | G2 | Claude Agent | … |
-| A3 | implement-ui | sonnet | high | 2 | G2 | Claude Agent | parallel with A2 |
-| A4 | tests | sonnet | medium | 3 | G3 | Claude Agent | after G2 |
+| A1 | explore | haiku | low | 1 | G1 | Claude Agent | … |
+| A2 | plan-lead | opus | high | 0 | — | Lead (you) | always Opus for plan |
+| A3 | implement-api | sonnet or opus | high | 2 | G2 | Claude Agent | opus if hard |
+| A4 | implement-ui | sonnet | high | 2 | G2 | Claude Agent | parallel with A3 |
+| A5 | tests | sonnet | medium | 3 | G3 | Claude Agent | after G2 |
+| A6 | review | opus | high | 4 | G4 | Claude Agent | hard / risky changes |
 | CX1 | scaffold/codegen | codex | — | 2 | G2 | Codex CLI | user asked / usage |
 
 ## Model policy
-- Lead (you): …
-- Default worker: …
-- Escalation: …
+- Lead (you): **Opus** for planning and hard orchestration decisions
+- Default worker: Sonnet (Haiku for explore)
+- Hard tasks (≥7 / auth / security / ambiguous): **Opus**
+- Escalation: Sonnet → Opus when a track proves hard; Opus → Codex only for grind or usage ≥ 70%
 
 ## Codex usage
 - Tracks assigned to Codex: …
@@ -85,16 +97,22 @@ Create/overwrite `.claude/delegate-plan.md` using the template shape below (fill
 - …
 ```
 
-### Model map (workers)
+### Model map (assess → pick)
+
+Score the work, then assign models. **Opus is required for planning and hard tasks.**
 
 | Work type | Model | Effort |
 |-----------|-------|--------|
-| Explore / grep / map repo | Haiku or Explore agent | low |
-| Single-file / boilerplate | Haiku or Sonnet | low–medium |
-| Feature implementation | Sonnet | high |
-| Architecture / ambiguous design | Opus (lead only) | high–max |
+| Explore / grep / map repo | Haiku or `delegate-explorer` | low |
+| Single-file / boilerplate / clear bug | Haiku or Sonnet | low–medium |
+| Normal feature implementation | Sonnet (`delegate-implementer`) | high |
+| **Planning** (write `.claude/delegate-plan.md`, phases, agent table) | **Opus** (lead) | high–max |
+| **Hard tasks** (score ≥ 7, architecture, ambiguous design, auth/payments/migrations, security/perf, cross-cutting) | **Opus** (lead and/or hard implement/review agents) | high–max |
+| Hard review / acceptance gates on risky changes | **Opus** (`delegate-reviewer` override or lead review) | high |
 | Mechanical codegen / long grind | Codex | — |
 | Usage ≥ 70% | Codex leads; Claude only for tiny coordination | — |
+
+**Hard-task rule:** if complexity ≥ 7, or the track touches auth, payments, migrations, security, performance, or unclear requirements → assign **Opus**, not Sonnet. Announce the chosen model in the Agents table.
 
 ### When to spawn **more than one** agent
 
@@ -168,8 +186,8 @@ For each Codex track:
 
 **`/delegate fix typo in README`** → score 1 → Haiku, no plan file.
 
-**`/delegate add billing webhook + tests`** → plan with implementer + tester; Sonnet; maybe parallel test agent after code.
+**`/delegate add billing webhook + tests`** → **Opus** plans (payments = hard); Sonnet or Opus implementer; tester; maybe parallel after code.
 
-**`/delegate build a small expense tracker app with auth, API, and web UI; use Codex for the UI scaffold`** → plan phases; Claude explores + API; Codex UI track; parallel where safe; confirm before spawn.
+**`/delegate build a small expense tracker app with auth, API, and web UI; use Codex for the UI scaffold`** → **Opus** plans (auth + new app); Haiku explore; Opus/Sonnet API; Codex UI; parallel where safe; confirm before spawn.
 
 **`/delegate …` at 80% usage** → codex-led handoff of the whole remaining plan.
