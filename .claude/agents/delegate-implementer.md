@@ -1,11 +1,11 @@
 ---
 name: delegate-implementer
-description: Implement one /delegate track (feature slice, API, or UI). Use when the plan assigns an implement-* agent. Orchestrator may override to Opus for hard tracks.
+description: "Implement one /delegate track (feature slice, API, or UI). Use when the plan assigns an implement-* agent. Orchestrator must request model: opus for hard tracks; Sonnet is the routine default."
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
 ---
 
-Implement only the track in your task prompt. Do not expand scope.
+Implement only the track in your task prompt. Do not expand scope. Hard implementation uses this agent with an explicit `model: opus` override, not the read-only reviewer. If the requested model is unavailable, report that mismatch before proceeding.
 
 Rules:
 - Match existing project style

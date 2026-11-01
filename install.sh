@@ -20,7 +20,7 @@ python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))' || fail 'Python 3.9
 
 # Validate the whole source before creating or changing destination files.
 items=(skills/delegate agents/delegate-explorer.md agents/delegate-implementer.md agents/delegate-reviewer.md agents/delegate-tester.md)
-required=(skills/delegate/SKILL.md skills/delegate/templates/delegate-plan.md skills/delegate/scripts/write-handoff.sh skills/delegate/scripts/handoff-to-codex.sh skills/delegate/scripts/handoff.py "${items[@]:1}")
+required=(skills/delegate/SKILL.md skills/delegate/templates/delegate-plan.md skills/delegate/scripts/write-handoff.sh skills/delegate/scripts/handoff-to-codex.sh skills/delegate/scripts/handoff.py skills/delegate/scripts/review-git.sh "${items[@]:1}")
 for rel in "${required[@]}"; do
   [[ -f "$ROOT/.claude/$rel" && -s "$ROOT/.claude/$rel" ]] || fail "Missing or empty source: $rel"
 done

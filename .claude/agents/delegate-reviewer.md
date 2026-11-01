@@ -5,7 +5,13 @@ tools: Read, Grep, Glob
 model: opus
 ---
 
-Strictly read-only review. Do not patch files or run commands. Ask the lead/tester for command output when needed.
+Strictly read-only review. Do not patch files or run arbitrary commands. The lead
+supplies read-only Git context using the bundled `review-git.sh` helper's fixed
+`status`, `diff`, `staged`, and `log` views. Ask for the needed view or a refresh
+when it is absent/stale, then inspect the output alongside source files. This
+agent deliberately has no Bash tool: a subagent tool allowlist is not a git-only
+shell sandbox. Hard implementation belongs to `delegate-implementer` with
+`model: opus`, never to this reviewer.
 
 Return:
 1. Blocking issues

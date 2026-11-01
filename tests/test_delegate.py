@@ -3,6 +3,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import pty
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -54,13 +56,14 @@ class Sandbox(unittest.TestCase):
         path.write_text('''#!/usr/bin/env python3
 import json, os, pathlib, sys, time
 args = sys.argv[1:]
-prompt = sys.stdin.read()
-pathlib.Path(os.environ['MOCK_LOG']).write_text(json.dumps({'args': args, 'prompt': prompt, 'cwd': os.getcwd()}))
+prompt = sys.stdin.read() if args[0] == 'exec' else args[-1]
+pathlib.Path(os.environ['MOCK_LOG']).write_text(json.dumps({'args': args, 'prompt': prompt, 'cwd': os.getcwd(), 'stdin_tty': sys.stdin.isatty(), 'stdout_tty': sys.stdout.isatty()}))
 mode = os.environ.get('MOCK_MODE', 'ok')
 if mode == 'fail': sys.exit(23)
 if mode == 'slow': time.sleep(0.4)
 if mode != 'empty':
-    pathlib.Path(args[args.index('--output-last-message')+1]).write_text('Completed mock track; no model called.\\n')
+    output = args[args.index('--output-last-message')+1] if '--output-last-message' in args else os.environ.get('MOCK_INTERACTIVE_RESULT')
+    if output: pathlib.Path(output).write_text('Completed mock track; no model called.\\n')
 ''')
         path.chmod(0o755)
 
@@ -79,6 +82,24 @@ if mode != 'empty':
     def launch(self, run='run1', track='CX1', extra=(), ok=True, approve=True):
         return self.run_cmd([BASH, str(SCRIPTS / 'handoff-to-codex.sh'), '--run-id', run,
                              '--track', track, *(['--approve'] if approve else []), *extra], ok=ok)
+
+    def launch_in_terminal(self, extra=(), code=0):
+        # A fake executable only: a PTY tests stream inheritance, not live TUI behavior.
+        master, slave = pty.openpty()
+        process = subprocess.Popen([BASH, str(SCRIPTS / 'handoff-to-codex.sh'),
+                                    '--run-id', 'run1', '--track', 'CX1', '--approve',
+                                    '--interactive', *extra], cwd=self.repo, env=self.env,
+                                   stdin=slave, stdout=slave, stderr=subprocess.PIPE, text=True)
+        os.close(slave)
+        try:
+            _, stderr = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, code, stderr)
+            return stderr
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+            os.close(master)
 
     def assert_no_launch(self):
         self.assertFalse((self.base / 'mock.json').exists())
@@ -131,6 +152,76 @@ class HandoffTests(Sandbox):
         self.assertEqual(outcome['exit_code'], 0)
         self.assertEqual(outcome['actual_model'], 'unknown')
         self.launch(ok=False)  # no duplicate work or overwrite
+
+    def test_interactive_inherits_terminal_and_requests_human_approvals(self):
+        self.write(extra=['--model', 'example-model'])
+        self.complete()
+        self.env['MOCK_INTERACTIVE_RESULT'] = str(self.directory() / 'result.md')
+        self.launch_in_terminal(extra=['--sandbox', 'workspace-write'])
+        log = json.loads((self.base / 'mock.json').read_text())
+        self.assertEqual(log['args'][:4], ['--sandbox', 'workspace-write', '--ask-for-approval', 'on-request'])
+        self.assertIn('approvals_reviewer="user"', log['args'])
+        self.assertIn('sandbox_workspace_write.network_access=false', log['args'])
+        self.assertIn('example-model', log['args'])
+        self.assertNotIn('--output-last-message', log['args'])
+        self.assertNotIn('Fix the scoped fixture', log['prompt'])  # private text stays in file
+        self.assertIn('.claude/delegate-runs/run1/CX1/handoff.md', log['prompt'])
+        self.assertIn('.claude/delegate-runs/run1/CX1/result.md', log['prompt'])
+        self.assertTrue(log['stdin_tty'])
+        self.assertTrue(log['stdout_tty'])
+        started = json.loads((self.directory() / 'started.json').read_text())
+        outcome = json.loads((self.directory() / 'outcome.json').read_text())
+        self.assertEqual(started['mode'], 'interactive')
+        self.assertEqual(outcome['mode'], 'interactive')
+        self.assertTrue(outcome['result_present'])
+        self.assertEqual(outcome['acceptance'], 'requires review')
+        self.launch(extra=['--interactive'], ok=False)  # cannot consume twice
+
+    def test_interactive_readonly_exit_does_not_claim_task_completion(self):
+        self.write()
+        self.complete()
+        self.launch_in_terminal()
+        outcome = json.loads((self.directory() / 'outcome.json').read_text())
+        self.assertEqual(outcome['exit_code'], 0)
+        self.assertFalse(outcome['result_present'])
+        self.assertEqual(outcome['acceptance'], 'requires review')
+        self.assertFalse((self.directory() / 'result.md').exists())
+
+    def test_interactive_without_terminal_prints_revalidating_command(self):
+        self.write()
+        self.complete()
+        result = self.launch(extra=['--interactive', '--sandbox', 'workspace-write'], ok=False)
+        self.assertEqual(result.returncode, 2)
+        command = shlex.split(result.stdout.splitlines()[-1])
+        self.assertEqual(command[:5], ['cd', str(self.repo), '&&', 'bash', str(SCRIPTS / 'handoff-to-codex.sh')])
+        self.assertEqual(command[5:], ['--run-id', 'run1', '--track', 'CX1', '--approve', '--interactive', '--sandbox', 'workspace-write'])
+        self.assertFalse((self.directory() / 'started.json').exists())
+        self.assert_no_launch()
+        (self.repo / 'app.txt').write_text('changed after printing command')
+        self.assertIn('Repository changed', self.launch_in_terminal(code=1))
+        self.assert_no_launch()
+
+    def test_interactive_keeps_approval_plan_only_and_validation_gates(self):
+        self.write()
+        self.launch(extra=['--interactive'], approve=False, ok=False)
+        self.assertIn('placeholder', self.launch(extra=['--interactive'], ok=False).stderr)
+        self.launch(extra=['--interactive', '--plan-only'])
+        self.assert_no_launch()
+        self.assertFalse((self.directory() / 'started.json').exists())
+        self.complete()
+        (self.directory() / 'result.md').symlink_to(self.base / 'outside.md')
+        self.launch(extra=['--interactive'], ok=False)
+        self.assert_no_launch()
+
+    def test_interactive_nonzero_exit_is_recorded_and_not_retried(self):
+        self.write()
+        self.complete()
+        self.env['MOCK_MODE'] = 'fail'
+        self.launch_in_terminal(code=23)
+        outcome = json.loads((self.directory() / 'outcome.json').read_text())
+        self.assertEqual(outcome['exit_code'], 23)
+        self.assertEqual(outcome['mode'], 'interactive')
+        self.launch(extra=['--interactive'], ok=False)
 
     def test_writer_never_overwrites(self):
         self.write()
@@ -279,6 +370,48 @@ class HandoffTests(Sandbox):
         self.run_cmd([BASH, str(SCRIPTS / 'handoff-to-codex.sh')], ok=False)
         self.run_cmd([BASH, str(SCRIPTS / 'write-handoff.sh')], cwd=self.home, ok=False)
         self.assert_no_launch()
+
+
+class ReviewGitTests(Sandbox):
+    def view(self, *args, ok=True):
+        return self.run_cmd([BASH, str(SCRIPTS / 'review-git.sh'), *args], ok=ok)
+
+    def test_fixed_views_leave_repository_unchanged(self):
+        app = self.repo / 'app.txt'
+        app.write_text('staged change\n')
+        self.run_cmd([GIT, 'add', 'app.txt'])
+        app.write_text('working change\n')
+        index = (self.repo / '.git/index').read_bytes()
+        self.assertIn('app.txt', self.view('status').stdout)
+        self.assertIn('+working change', self.view('diff').stdout)
+        self.assertIn('+staged change', self.view('staged').stdout)
+        self.assertIn('fixture', self.view('log').stdout)
+        self.assertEqual((self.repo / '.git/index').read_bytes(), index)
+        self.assertEqual(app.read_text(), 'working change\n')
+
+    def test_arbitrary_commands_options_and_shell_text_are_rejected(self):
+        for args in [(), ('reset',), ('diff', '--output', str(self.base / 'outside')),
+                     ('log', '--all'), ('status; touch outside',)]:
+            with self.subTest(args=args):
+                self.assertEqual(self.view(*args, ok=False).returncode, 2)
+        self.assertFalse((self.base / 'outside').exists())
+        self.assertEqual((self.repo / 'app.txt').read_text(), 'original\n')
+
+    def test_configured_external_helpers_are_not_executed(self):
+        marker = self.base / 'git-helper-ran'
+        hook = self.repo / '.git/hooks/audit-readonly'
+        hook.write_text('#!' + BASH + '\nprintf ran > "' + str(marker) + '"\n')
+        hook.chmod(0o755)
+        self.run_cmd([GIT, 'config', 'core.fsmonitor', '.git/hooks/audit-readonly'])
+        self.run_cmd([GIT, 'status', '--porcelain'])
+        self.assertTrue(marker.exists())  # positive control: hook really works
+        marker.unlink()
+        (self.repo / 'app.txt').write_text('changed\n')
+        self.env['GIT_EXTERNAL_DIFF'] = '.git/hooks/audit-readonly'
+        self.env['GIT_PAGER'] = '.git/hooks/audit-readonly'
+        for view in ('status', 'diff', 'staged', 'log'):
+            self.view(view)
+        self.assertFalse(marker.exists())
 
 
 class InstallerTests(Sandbox):

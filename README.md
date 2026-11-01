@@ -15,28 +15,72 @@ boundary. Tiny jobs should stay tiny.
 
 1. **Intent first:** plan-only never launches implementation or Codex, including
    when usage is high. Tool permissions still apply.
-2. Write a scoped plan and verifiable acceptance criteria. Confirm complex jobs,
-   multi-worker execution, and the scope/provider of Codex tracks before dispatch.
-   An explicit request to execute that exact Codex scope can already be approval.
-3. Use independent agents only where useful; do not give overlapping files to
-   concurrent writers. After approval, dispatch that scope without repeated prompts.
-4. If a current usage observation reaches 70%, propose a Codex continuation; do
-   not treat quota pressure as permission. Unknown usage means conservative
-   coordination, not automatic expensive fan-out.
+2. Write a scoped plan and verifiable acceptance criteria. Clear score **3–6**
+   execution requests proceed after a one-line summary, including independent
+   parallel Claude workers. Multiple workers alone do not add a confirmation gate.
+   Confirm score **≥7** and Codex scope/provider/mode unless already specifically
+   approved. A plan-only request never authorizes execution.
+3. Use independent agents only where useful; never give overlapping files to
+   concurrent writers. Unknown usage means **normal full-Claude orchestration**,
+   including parallel agents; honestly state that usage was not observed.
+4. Offer **Auto-Codex at ≥70%: yes/no** in each job's plan (default no). An explicit
+   user opt-in covers the remaining scope, provider, runtime mode and sandbox, so
+   an observed threshold can trigger a validated handoff **without repeat consent**.
+   Without matching approval, ask before switching. Unknown usage never invents a
+   threshold trigger. Opt-in expires with the job, is revocable, and never overrides
+   plan-only, scope limits or interactive security prompts.
 5. Review outputs and run checks. Report actual evidence, blockers, and models
    observed by the runtime—not just the model names requested in the plan.
 
 | Agent | Purpose | Requested default |
 |---|---|---|
 | `delegate-explorer` | Read-only mapping (`Read`, `Grep`, `Glob`; no shell) | Haiku |
-| `delegate-implementer` | One scoped implementation track | Sonnet |
+| `delegate-implementer` | One scoped implementation track | Sonnet; explicit `model: opus` for hard work |
 | `delegate-tester` | Authorized checks; fixes only if assigned | Sonnet |
-| `delegate-reviewer` | Read-only risk/acceptance review; no patching or shell | Opus |
+| `delegate-reviewer` | Read-only risk/acceptance review; lead supplies Git views | Opus |
 
 Opus is a **preference** for planning/hard work, not a claim that the current lead
 can switch itself. Explicit model requirements must not be silently substituted.
 Actual model and quota remain `unknown` when the runtime does not expose them.
 `/usage` is an interactive Claude Code command, not a command these scripts run.
+Hard implementation (auth/payments/migrations/security/performance/ambiguous design
+or score ≥7) goes to **delegate-implementer with `model: opus`**, not the read-only
+reviewer. Planning uses the Opus lead; review uses the Opus reviewer.
+
+A plan can record this explicit job-level consent:
+
+```text
+Auto-Codex at ≥70%: yes
+Opt-in evidence: user approved Codex for this job's remaining API/test scope
+Approved runtime: exec; sandbox: workspace-write
+Exclusions: no publishing, deployment, or unrelated files
+```
+
+The orchestrator must not set yes on its own. It can use `--approve` for a matching,
+still-valid opt-in without asking again; changed scope/mode or revoked permission
+requires the missing consent. This is an instruction-level consent record, not an
+authentication system or a globally persisted preference.
+
+### Useful tools without unrestricted shell access
+
+The skill pre-approves `Agent`, `Edit`, `Write`, read tools, and Bash invocations of
+its exact bundled helper paths. These grants reduce per-tool prompts; they do not
+turn plan-only into execution or supersede managed deny/ask rules. See the official
+[skill tool-permission semantics](https://code.claude.com/docs/en/skills#pre-approve-tools-for-a-skill).
+
+The lead can provide current Git views to the reviewer:
+
+```bash
+SKILL_DIR="$HOME/.claude/skills/delegate"  # or the project-local installation
+bash "$SKILL_DIR/scripts/review-git.sh" status  # or diff, staged, log
+```
+
+Only those four fixed views are accepted (no arbitrary flags); external diff/text
+converters, pagers, fsmonitor, signature checks and optional index writes are
+avoided. Submodule internals are omitted from diff views. The reviewer remains
+shell-less and can ask for a fresh view. This is deliberate: a subagent tool list
+does not turn Bash into a git-only sandbox; see the official
+[subagent tool restrictions](https://code.claude.com/docs/en/sub-agents#restrict-which-tools-a-subagent-can-use).
 
 ## Requirements and platforms
 
@@ -45,10 +89,10 @@ Actual model and quota remain `unknown` when the runtime does not expose them.
   shell's `PATH` only when launching a Codex track.
 - Handoff helpers require an initialized Git working tree with at least one
   commit. They work from its root or a subdirectory.
-- macOS/Linux: run the Bash commands below. On Windows use **WSL with Bash** and
-  install the tools inside that WSL environment. Git Bash may work with compatible
-  Git/Python/Codex binaries but is not covered by CI. Native PowerShell copying
-  alone is not a supported installation/runtime. Do not mix Windows and WSL homes.
+- macOS/Linux: run the Bash commands below. **Windows support is WSL-only**:
+  install Bash, Git, Python (`python3`), Claude and Codex inside the same WSL
+  environment. Native PowerShell and Git Bash are not supported by this package.
+  Do not mix Windows and WSL homes. CI covers Linux/macOS, not WSL itself.
 
 No helper installs software, logs in, or edits global Claude/Codex configuration.
 The installer intentionally copies only this skill and its four named agents.
@@ -129,7 +173,8 @@ Use `None` where accurate, not empty sections or TODO/TBD placeholders. Inspect 
 for private information. `--model MODEL` on the writer requests a specific Codex
 model; it does not prove availability or actual runtime identity.
 
-After the user has approved this exact scope, provider, and write mode:
+With this exact scope, provider and runtime mode approved (including an earlier
+matching per-job auto-Codex opt-in), launch without asking for the same consent again:
 
 ```bash
 bash "$SKILL_DIR/scripts/handoff-to-codex.sh" \
@@ -140,14 +185,53 @@ The default sandbox is `read-only`; choose `workspace-write` only for approved
 edits. `--plan-only` suppresses launch even with `--approve`. The approval flag is
 an assertion by the caller, not a UI confirmation or authentication mechanism.
 
-The helper uses `codex exec`, a dedicated `--output-last-message` path, task text
+### Default: unattended exec
+
+The default uses `codex exec`, a dedicated `--output-last-message` path, task text
 on stdin (not shell evaluation/process arguments), no permission escalation, and
-network disabled in the workspace sandbox. See the official
-[CLI reference](https://learn.chatgpt.com/docs/cli/reference) and
+network disabled in the workspace sandbox. Use it for bounded work that fits
+those permissions. A blocked install/fetch is not permission to loosen them.
+
+### Optional: interactive Codex-led continuation
+
+For approved steering or user-reviewed installs/fetches, run in your terminal:
+
+```bash
+bash "$SKILL_DIR/scripts/handoff-to-codex.sh" \
+  --run-id pagination-001 --track CX1 --approve --interactive --sandbox workspace-write
+```
+
+Choose the mode before first launch; a consumed track cannot be relaunched in a
+different mode. For a failed exec run, inspect its changes and create a fresh track
+before an approved interactive continuation. `--plan-only` suppresses both modes.
+
+Interactive mode inherits your terminal and runs `codex` with the selected
+sandbox, `--ask-for-approval on-request`, user-reviewed requests, and network still
+disabled inside the workspace sandbox. You can steer the session and approve
+specific escalation requests when supported (for example a required package
+fetch). It does **not** silently enable network, bypass controls, auto-approve
+requests, or edit global settings. Managed restrictions remain in force. The
+same job/provider/sandbox consent rules apply; interactive prompts are additional
+per-action controls, not repeated approval for the whole job.
+
+When called without a TTY (often from Claude's shell tool), the launcher validates
+the draft, prints the exact shell-quoted command to run in your terminal, and exits
+**2** without writing a start marker or invoking Codex. That command calls this
+launcher again, so stale/changed context is revalidated rather than bypassed.
+Do not manufacture a pseudo-terminal to run a real unattended interactive client.
+
+The interactive CLI has no `--output-last-message` equivalent used here. The prompt
+asks for `result.md` only when write scope permits; otherwise the summary remains
+in the conversation. `outcome.json` records the mode and process exit status, but
+zero only means the session ended normally—not that the task is complete. Inspect
+the conversation, changes, checks and any result before accepting the work. Only
+exec mode requires a nonempty result file to return success.
+
+See the official [CLI reference](https://learn.chatgpt.com/docs/cli/reference) and
 [approval/sandbox guidance](https://learn.chatgpt.com/docs/agent-approvals-security).
-Local Codex configuration, integrations and platform sandbox support still
-matter; review them before sending sensitive context. This wrapper is not a
-sandbox around arbitrary installed plugins or a hostile local process.
+Local Codex configuration, integrations and platform support still matter;
+review them before sending sensitive context. This wrapper is not a sandbox
+around arbitrary installed plugins or a hostile local process.
 
 Each track has its own directory:
 
@@ -158,8 +242,8 @@ Each track has its own directory:
     handoff.md                 # reviewed task text
     manifest.json              # repository/run/track identity and context hash
     started.json               # exclusive single-use launch marker
-    result.md                  # Codex's final message (not proof of success)
-    outcome.json               # exit code and whether a nonempty result exists
+    result.md                  # final message; optional for interactive sessions
+    outcome.json               # mode, exit code, result presence; needs review
 ```
 
 Launch fails closed for missing/incomplete drafts, mismatched identity, symlinks,
@@ -167,7 +251,7 @@ unsafe paths, existing output/launch markers, age over 24 hours, or Git context
 changes (HEAD/branch, tracked changes, untracked paths/content). Ignored files,
 submodule internals, and external services are **not fully fingerprinted**; assess
 those dependencies yourself. Generated run state is excluded from the hash.
-A process exit of zero plus a nonempty result still needs acceptance review.
+A process exit of zero (and, in exec mode, a nonempty result) still needs acceptance review.
 
 Create drafts after other preparatory edits. If context changes, inspect the
 changes and create a fresh track; don't edit the manifest to bypass checks. If a
@@ -223,9 +307,15 @@ Runs Bash syntax checks plus standard-library `unittest` integration tests using
 isolated temporary homes/repositories and **fake Codex executables only**. Covers
 install conflicts/backups/rollback, preflight and path safety, approval/plan-only,
 stale/missing/incomplete handoffs, parallel tracks, duplicate launches, missing
-CLI, nonzero exits and empty outputs. GitHub Actions runs on Linux and macOS.
-These tests do not validate a live Claude session, Codex service, model routing,
-authentication, sandbox behavior, or quota readings; no paid model calls occur.
+CLI, nonzero exits and empty outputs. Interactive tests use a fake executable in
+a test-only pseudo-terminal; they check inherited terminal streams, explicit
+approval/network flags, and no-TTY fallback without running a real client. Fixed
+Git views are tested for read-only behavior and refusal of arbitrary commands.
+Static policy-contract checks cover routing examples and tool/model declarations;
+they are not evidence that a live model will follow every instruction. GitHub
+Actions runs on Linux and macOS. Live Claude/Codex behavior, authentication,
+permission prompts, model routing and quota readings are not exercised; no paid
+model calls occur.
 
 ## License follow-up
 

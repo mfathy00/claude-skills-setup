@@ -2,15 +2,26 @@
 name: delegate
 description: Plan and coordinate scoped work across Claude agents and explicitly approved Codex tracks. Respect plan-only requests and user approval before dispatch, including at high usage.
 argument-hint: "[what to build / do]"
-allowed-tools: Read Grep Glob
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+  - Agent
+  - Edit
+  - Write
+  - Bash(bash ${CLAUDE_SKILL_DIR}/scripts/write-handoff.sh *)
+  - Bash(bash ${CLAUDE_SKILL_DIR}/scripts/handoff-to-codex.sh *)
+  - Bash(bash ${CLAUDE_SKILL_DIR}/scripts/review-git.sh *)
 ---
 
 # /delegate — orchestrator
 
 Coordinate a small, verifiable workflow, not an army of agents for every task.
 Use `$ARGUMENTS` when supplied; otherwise use the latest user request.
-Normal tool permission prompts still apply: this skill does not pre-authorize
-shell commands or file writes.
+The skill pre-approves ordinary read/edit/worker tools and only the bundled
+helper command paths, not unrestricted Bash. Tool grants are not task consent:
+plan-only, scope limits, and the authorization rules below still govern their use.
+Managed deny/ask rules and the user's permission settings still apply.
 
 ## 1. Establish intent and authorization **before** usage routing
 
@@ -20,13 +31,24 @@ shell commands or file writes.
   only what is needed and return a plan (save it only when permitted).
 - Planning does not authorize execution. Publishing, sending, deploying, merging,
   installing dependencies, and broader access need their own applicable approval.
-- For complexity ≥7, multiple workers, or **any Codex track**, show the short
-  plan, tool/provider, write scope, and likely cost, then wait for approval.
-  An explicit request to execute that exact Codex scope can provide approval;
-  record it rather than asking the same question twice. A general coding request
-  or high usage alone is not consent to send context to another provider.
-- After scope/mode approval, dispatch the approved work automatically. Ask again
-  only when scope, provider, privileges or material cost expectations change.
+- For clear score **3–6** execution requests, show a one-line summary and the plan
+  path, then proceed with independent Claude workers, including parallel workers.
+  Multiple workers alone do not add an approval gate. Clarify genuinely ambiguous
+  scope; a plan-only request is never an execution request.
+- For complexity **≥7** or a **Codex track**, show the short plan, provider, write
+  scope, runtime mode and likely cost, then wait unless that exact scope/mode was
+  already explicitly approved. Record existing approval; do not ask twice.
+- Offer per-job **Auto-Codex at ≥70%: yes/no** in the plan (default **no**). Set yes
+  only after an explicit user opt-in covering this job's remaining scope, Codex
+  provider, sandbox and exec/interactive mode. Record the user's approval evidence
+  and exclusions. A general coding request or quota pressure alone is not opt-in.
+- When an observed usage value reaches 70% and this opt-in still covers the work,
+  write/validate the handoff and dispatch automatically, without repeat consent.
+  Otherwise ask once before switching provider. An opt-in is not a global setting;
+  it expires with the job and can be revoked. Plan-only always overrides it.
+- After approval, ask again only for changed scope, provider, privileges, runtime
+  mode or material cost expectations. Per-command security prompts in interactive
+  Codex are separate from job-level consent and must not be bypassed.
 
 ## 2. Observe usage; do not invent it
 
@@ -40,12 +62,14 @@ one is known, label the other unknown rather than claiming complete visibility.
 |---|---|
 | Both known, max <50% | Normal Claude workflow |
 | Known value 50–69% | Lean Claude; fewer/smaller workers |
-| Any known value ≥70% | Pause heavy Claude work; propose Codex continuation |
-| Missing, stale, or unavailable | **Unknown**: a short plan/clarification; no automatic expensive fan-out or provider switch |
+| Any known value ≥70% | Auto-Codex if this job explicitly opted in; otherwise pause heavy work and ask |
+| Missing, stale, or unavailable | **Unknown**: normal full-Claude workflow, including useful parallel agents; state usage was not observed |
 
-At a limit, save permitted progress and wait if Codex continuation has not been
-approved. A plan-only request remains plan-only. The threshold is a preference,
-not a reliable quota API or an authorization mechanism.
+Unknown usage is not zero, high usage, or a reason to disable normal orchestration.
+It does not trigger auto-Codex: continue Claude within the task's normal approval
+rules and state the visibility gap. At an observed limit, use the per-job opt-in
+or ask once; never manufacture a reading to trigger it. A plan-only request remains
+plan-only. The threshold is a routing preference, not an authorization mechanism.
 
 ## 3. Plan and model preferences
 
@@ -62,8 +86,15 @@ another run. Record paths in chat. No plan needs to be generated by a helper.
 |---|---|
 | Explore/map | Haiku / delegate-explorer |
 | Routine implementation/tests | Sonnet / delegate-implementer or delegate-tester |
-| Planning, hard/risky tracks, review | Opus / delegate-reviewer |
+| Planning | Opus lead (request/verify availability; do not pretend to switch) |
+| Hard/risky implementation | delegate-implementer with explicit `model: opus` |
+| Risk/acceptance review | Opus / delegate-reviewer (read-only) |
 | Approved mechanical or quota-relief track | Codex; configured model or explicit user choice |
+
+Hard implementation means score ≥7 or auth/payments/migrations/security/performance/
+ambiguous design. Spawn `delegate-implementer` with `model: opus` explicitly; its
+Sonnet default is for routine work. Never send implementation to the read-only
+reviewer. If Opus is unavailable, disclose it and ask rather than silently downgrade.
 
 A skill cannot switch the current lead model merely by saying “Opus.” Record
 **requested/preferred** and **observed actual** separately. Use supported model
@@ -80,10 +111,15 @@ requested default, not proof of the model that actually ran.
    Use separate worktrees for concurrent Codex writers. Unique handoff paths do
    not isolate a shared working tree. Read-only tracks may share a worktree.
 3. Join each group, inspect changes, then verify before starting dependent work.
-4. Re-observe usage before heavy phases when available. A changed route returns
-   to the authorization gate; it never jumps directly to launch.
-5. Explorer/reviewer use Read/Grep/Glob only. Have the lead/tester run explicitly
-   authorized commands; a read-only reviewer never patches “tiny” issues.
+4. Re-observe usage before heavy phases when available. Follow the per-job
+   auto-Codex opt-in if applicable; otherwise obtain only the missing consent.
+5. Explorer/reviewer keep Read/Grep/Glob only. For review context, the lead runs
+   `bash "${CLAUDE_SKILL_DIR}/scripts/review-git.sh" status` (or `diff`, `staged`,
+   `log`) and includes the output in the reviewer prompt. This fixed helper disables
+   external diff/text conversion, pagers, fsmonitor and optional index writes; it
+   accepts no arbitrary Git options. The reviewer never patches “tiny” issues.
+   Subagent tool lists do not enforce a safe git-only shell, so do not add broad
+   Bash merely to obtain a diff. Ask the lead for a fresh view when needed.
 6. Tester fixes only if its assigned scope authorizes fixes; otherwise report.
 
 ## 5. Codex handoff (also used at ≥70%)
@@ -106,7 +142,8 @@ Run helpers from the project or a subdirectory, not from the skill installation.
    done, next steps, key paths, commands/results, constraints. Use `None` honestly
    where appropriate; remove TODO/TBD placeholders. Include authorization limits,
    what not to redo, and exact allowed writes. Inspect for secrets/private data.
-4. Only after the user has approved this scope and Codex mode, launch explicitly:
+4. With this scope and Codex mode approved (including a matching per-job
+   auto-Codex opt-in), launch without asking for the same approval again:
 
    ```bash
    bash "${CLAUDE_SKILL_DIR}/scripts/handoff-to-codex.sh" \
@@ -114,25 +151,50 @@ Run helpers from the project or a subdirectory, not from the skill installation.
    ```
 
    Omit `--sandbox workspace-write` for read-only work. `--plan-only` always
-   suppresses launch. `--approve` records the caller's assertion of user approval;
-   it is not an authentication system and must never be added speculatively.
+   suppresses launch. `--approve` records the caller's assertion of user approval,
+   including valid earlier opt-in; it is not authentication and must not be added
+   speculatively. Use the approved mode; changing to interactive requires that the
+   user approved interactive control, not just unattended exec.
 5. The launcher validates repository/run/track identity, age (≤24h), unchanged
    Git context, complete sections, safe paths, and unused output. It refuses
    missing/stale drafts and never auto-creates a draft to launch. If the repository
    changed, review the new state and create a fresh track; do not edit metadata to
    bypass validation. Ignore generated run state when comparing Git snapshots.
-6. Codex runs non-interactively inside the requested sandbox with network disabled
-   and no permission escalation. A denied action is a blocker, not a reason to
-   weaken the sandbox. The process exit code and nonempty `result.md` are checked;
-   acceptance criteria still require review. Read `outcome.json`, integrate only
-   scoped changes, and run appropriate tests. Never infer actual model or quota
-   from the requested CLI flags.
+6. **Default exec:** runs inside the selected sandbox with network disabled and
+   no escalation; exit status and a nonempty `result.md` are checked. Do not weaken
+   the sandbox or retry automatically when blocked.
+7. **Interactive continuation:** add `--interactive` when approved and the user
+   wants steering or permission prompts for installs/fetches. It uses the same
+   sandbox/network boundary plus `on-request` approvals routed to the **user**;
+   network is not silently enabled. A human may approve specific escalations when
+   the runtime permits them. Managed restrictions still apply. No global settings
+   are changed and no bypass flags are used.
+   Without a terminal, the helper prints an exact shell-quoted launcher command
+   and exits 2 without consuming the track; the terminal invocation revalidates
+   it. Do not fabricate a TTY to launch an unattended “interactive” session.
+   The TUI inherits stdin/stdout. Its exit status means the session ended, not task
+   completion; `result.md` is optional (especially read-only mode). Inspect the
+   conversation, any result, changes, and `outcome.json` before accepting work.
+8. Integrate only scoped changes and run appropriate tests. Never infer actual
+   model or quota from requested CLI flags. No automatic retry of paid work.
 
 Each track owns `.claude/delegate-runs/<run-id>/<track>/` with `handoff.md`,
 `manifest.json`, `started.json`, `result.md`, and `outcome.json`. Start markers
 prevent duplicate launches. A missing outcome means interrupted/uncertain, not
 success; inspect changes before creating a new track. Do not auto-retry paid work.
 Legacy shared handoff files are not launched: migrate by creating a new draft.
+
+## Routing examples (policy contract)
+
+| Scenario | Expected behavior |
+|---|---|
+| Plan-only; score 9; usage 80%; auto-Codex yes | Plan only; no workers or Codex |
+| Execute; score 5; usage unknown; Claude scope clear | Summary then normal full-Claude parallel work; usage unobserved |
+| Execute; score 7; usage unknown; approval missing | Show plan and wait for approval |
+| Execute; score 5; usage 80%; matching auto-Codex opt-in | Validate handoff then auto-Codex; no repeat consent |
+| Execute; score 5; usage 80%; auto-Codex no or revoked | Ask before Codex; preserve progress |
+| Execute; score 5; usage unknown; auto-Codex yes | Normal Claude workflow; no invented threshold trigger |
+| Hard implementation approved | delegate-implementer with model: opus; reviewer stays read-only |
 
 ## 6. Finish honestly
 
