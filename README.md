@@ -1,8 +1,8 @@
-# Claude Skills Setup — `/delegate`
+﻿# Claude Skills Setup â€” `/delegate`
 
 A small [Claude Code](https://code.claude.com) skill for planning, assigning scoped
 Claude workers, and handing explicitly approved tracks to Codex. It is a set of
-instructions plus local helpers—not a quota API, model switcher, or security
+instructions plus local helpersâ€”not a quota API, model switcher, or security
 boundary. Tiny jobs should stay tiny.
 
 ```text
@@ -15,22 +15,22 @@ boundary. Tiny jobs should stay tiny.
 
 1. **Intent first:** plan-only never launches implementation or Codex, including
    when usage is high. Tool permissions still apply.
-2. Write a scoped plan and verifiable acceptance criteria. Clear score **3–6**
+2. Write a scoped plan and verifiable acceptance criteria. Clear score **3â€“6**
    execution requests proceed after a one-line summary, including independent
    parallel Claude workers. Multiple workers alone do not add a confirmation gate.
-   Confirm score **≥7** and Codex scope/provider/mode unless already specifically
+   Confirm score **â‰¥7** and Codex scope/provider/mode unless already specifically
    approved. A plan-only request never authorizes execution.
 3. Use independent agents only where useful; never give overlapping files to
    concurrent writers. Unknown usage means **normal full-Claude orchestration**,
    including parallel agents; honestly state that usage was not observed.
-4. Offer **Auto-Codex at ≥70%: yes/no** in each job's plan (default no). An explicit
+4. Offer **Auto-Codex at â‰¥70%: yes/no** in each job's plan (default no). An explicit
    user opt-in covers the remaining scope, provider, runtime mode and sandbox, so
    an observed threshold can trigger a validated handoff **without repeat consent**.
    Without matching approval, ask before switching. Unknown usage never invents a
    threshold trigger. Opt-in expires with the job, is revocable, and never overrides
    plan-only, scope limits or interactive security prompts.
 5. Review outputs and run checks. Report actual evidence, blockers, and models
-   observed by the runtime—not just the model names requested in the plan.
+   observed by the runtimeâ€”not just the model names requested in the plan.
 
 | Agent | Purpose | Requested default |
 |---|---|---|
@@ -44,13 +44,13 @@ can switch itself. Explicit model requirements must not be silently substituted.
 Actual model and quota remain `unknown` when the runtime does not expose them.
 `/usage` is an interactive Claude Code command, not a command these scripts run.
 Hard implementation (auth/payments/migrations/security/performance/ambiguous design
-or score ≥7) goes to **delegate-implementer with `model: opus`**, not the read-only
+or score â‰¥7) goes to **delegate-implementer with `model: opus`**, not the read-only
 reviewer. Planning uses the Opus lead; review uses the Opus reviewer.
 
 A plan can record this explicit job-level consent:
 
 ```text
-Auto-Codex at ≥70%: yes
+Auto-Codex at â‰¥70%: yes
 Opt-in evidence: user approved Codex for this job's remaining API/test scope
 Approved runtime: exec; sandbox: workspace-write
 Exclusions: no publishing, deployment, or unrelated files
@@ -118,7 +118,7 @@ files. Identical copies are left unchanged. Unrelated skills/agents are untouche
 bash /path/to/claude-skills-setup/install.sh --dest /path/to/project/.claude
 ```
 
-Review the installed files and commit only the skill and four agents—not backups
+Review the installed files and commit only the skill and four agentsâ€”not backups
 or task state. Add the exclusions in the privacy section to that project's
 `.gitignore` **before** using `/delegate`. The installer does not edit it for you.
 
@@ -137,7 +137,7 @@ replacing files. With `--replace`, the prior skill directory (including custom
 files) and each replaced agent are moved intact into a unique
 `.claude/.delegate-backups/install-XXXXXXXX/before/` directory. The new copy is
 staged before replacing anything; the backup/recovery path is printed. This is
-replacement with backup, **not an automatic merge**—reapply desired customizations
+replacement with backup, **not an automatic merge**â€”reapply desired customizations
 from the backup after review. Backups are never automatically deleted.
 
 Failed installs attempt automatic rollback, preserving the failed new copies
@@ -223,7 +223,7 @@ Do not manufacture a pseudo-terminal to run a real unattended interactive client
 The interactive CLI has no `--output-last-message` equivalent used here. The prompt
 asks for `result.md` only when write scope permits; otherwise the summary remains
 in the conversation. `outcome.json` records the mode and process exit status, but
-zero only means the session ended normally—not that the task is complete. Inspect
+zero only means the session ended normallyâ€”not that the task is complete. Inspect
 the conversation, changes, checks and any result before accepting the work. Only
 exec mode requires a nonempty result file to return success.
 
@@ -317,9 +317,6 @@ Actions runs on Linux and macOS. Live Claude/Codex behavior, authentication,
 permission prompts, model routing and quota readings are not exercised; no paid
 model calls occur.
 
-## License follow-up
+## License
 
-The repository's existing permission statement is: “Use and adapt freely for
-your Claude Code / Codex workflow.” There is no named license file yet. The owner
-should clarify licensing before broader redistribution; this change does not
-select a new license on their behalf.
+[MIT](LICENSE) (c) 2026 Mohamed F. Deifalla
