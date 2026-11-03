@@ -1,0 +1,16 @@
+{
+  "id": "review-1",
+  "project": "my-project",
+  "goal": "Review source behavior without changing files",
+  "acceptance": "Report concrete findings, file references and missing checks",
+  "provider": "mock",
+  "model": "default",
+  "workspace": "/absolute/authorized/workspace",
+  "mode": "read-only",
+  "paths": ["src", "tests"],
+  "timeout_seconds": 300,
+  "budget_cents": 100,
+  "max_turns": 12,
+  "dependencies": [],
+  "subscriptions": ["issue_comment"]
+}

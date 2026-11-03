@@ -11,6 +11,23 @@ boundary. Tiny jobs should stay tiny.
 /delegate build an expense tracker; propose Codex for the UI scaffold
 ```
 
+## Optional bounded super-agent runtime
+
+Want durable coordination across **Claude and Codex**, not just prompt handoffs?
+The new [runtime guide](docs/SUPERAGENT.md) covers a small, mock-first Python service:
+four parallel workers by default (configurable 1–6), SQLite task/event state,
+offline GitHub intake, cancellation/recovery, conflict checks and review gates.
+It is an additive MVP—not the full DeepSeek research system or a production bot.
+
+```bash
+python3 -m examples.superagent.demo  # offline, temporary, no paid calls
+```
+
+[Setup, security, shipped vs future, and pros/cons →](docs/SUPERAGENT.md)
+Live execution requires explicit authorization, externally isolated workers and
+independent billing controls. Worktrees are not security isolation. The existing
+installer and interactive Codex handoff flow below are unchanged.
+
 ## Safety and routing
 
 1. **Intent first:** plan-only never launches implementation or Codex, including
