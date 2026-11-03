@@ -68,7 +68,7 @@ def private_file(path, missing_ok=False):
     return path
 
 
-def read_json(path, max_bytes=65536):
+def read_json(path, max_bytes=65536, with_size=False):
     path = canonical(path)
     if not path.is_file() or path.stat().st_size > max_bytes:
         raise SafetyError("JSON input must be a bounded regular file")
@@ -81,8 +81,19 @@ def read_json(path, max_bytes=65536):
                 raise SafetyError("duplicate JSON field: " + key)
             result[key] = value
         return result
-    with path.open(encoding="utf-8") as handle:
-        return json.load(handle, parse_constant=reject, object_pairs_hook=pairs)
+    fd = os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise SafetyError("JSON input must be a regular single-link file")
+        data = handle.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise SafetyError("JSON input grew beyond byte limit")
+    try:
+        value = json.loads(data.decode("utf-8"), parse_constant=reject, object_pairs_hook=pairs)
+        return (value, len(data)) if with_size else value
+    except RecursionError as exc:
+        raise SafetyError("JSON nesting exceeds parser limit") from exc
 
 
 def encoded(value):

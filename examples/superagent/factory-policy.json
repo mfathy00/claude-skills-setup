@@ -1,0 +1,21 @@
+{
+  "id": "batch-1",
+  "backlog_id": "board-1",
+  "folder": "/absolute/backlog",
+  "project": "my-project",
+  "selected_ids": ["item-1"],
+  "workspaces": {"item-1": "/absolute/agent-workspaces/item-1"},
+  "paths": ["src", "tests"],
+  "profiles": {
+    "routine": {"provider": "mock", "model": "mock-routine", "tier": "routine"},
+    "strong": {"provider": "mock", "model": "mock-strong", "tier": "strong"}
+  },
+  "routing": {"plan": "strong", "build": "routine", "security": "strong"},
+  "risk_by_item": {"item-1": "routine"},
+  "overrides": {},
+  "checks": ["git-diff-check"],
+  "budget_cents": 100,
+  "timeout_seconds": 300,
+  "max_items": 4,
+  "approved_hashes": {}
+}

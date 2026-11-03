@@ -39,6 +39,8 @@ class Fixture(unittest.TestCase):
         value = {"id": task_id, "goal": "Inspect src without changes", "acceptance": "Report evidence and limits",
                  "provider": "mock", "workspace": str(self.ws), "project": "example-project", "paths": ["src"]}
         value.update(overrides)
+        if value["provider"] in ("claude", "codex"):
+            value.setdefault("model", "offline-approved-model")
         return value
 
     def queued(self, task_id="t1", **overrides):
@@ -91,7 +93,7 @@ class StateTests(Fixture):
         self.store.approve("t1", "trusted local approval")
         task = self.store.claim("owner")
         prompt = prompt_for(self.store, task)
-        self.assertIn("untrusted_external_data", prompt)
+        self.assertIn("untrusted_data", prompt)
         self.assertIn(malicious, prompt)
         self.assertEqual(json.loads(task["spec"])["provider"], "mock")
 
@@ -322,7 +324,7 @@ class AdapterTests(Fixture):
         self.assertIn("Read,Grep,Glob", args)
         self.assertNotIn("Bash", args)
         self.assertNotIn("--dangerously-skip-permissions", args)
-        self.assertEqual(args[-1], "opus")
+        self.assertEqual(args[args.index("--model") + 1], "opus")
 
     def test_provider_success_requires_structured_terminal_result(self):
         claude = CLIAdapter("claude")

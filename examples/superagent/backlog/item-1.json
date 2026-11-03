@@ -1,0 +1,8 @@
+{
+  "id": "item-1",
+  "title": "Add pagination coverage",
+  "description": "Implement the agreed pagination behavior within the approved paths.",
+  "acceptance": "Cover empty, first and last pages; preserve existing API behavior.",
+  "dependencies": [],
+  "ready": true
+}
