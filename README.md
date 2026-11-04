@@ -11,6 +11,34 @@ boundary. Tiny jobs should stay tiny.
 /delegate build an expense tracker; propose Codex for the UI scaffold
 ```
 
+## Bounded super-agent and folder factory
+
+The [runtime guide](docs/SUPERAGENT.md) adds durable **Claude + Codex** coordination:
+scoped continuing sessions, event inboxes and recall, a read-only task-folder
+watcher, explicit specialist/model routing, and plan → build → tool checks →
+security review → owner acceptance. Four workers by default, configurable 1–6.
+
+```bash
+python3 -m examples.superagent.demo  # offline continuing-ticket + factory demo
+bash install.sh                    # Claude skill with passive bundled controller
+bash install.sh --client codex     # optional self-contained Codex personal skill
+```
+
+The AI lead proposes plans/routes; the controller enforces immutable approvals,
+revision manifests, bounds and conflict gates. Empty/waiting backlog makes no
+model calls. New or changed tasks are never automatically authorized. Routine
+work can use an approved lighter model; planning/security and high-risk work keep
+strong-model floors. Tests run through fixed tools, not a model merely to execute.
+
+[Setup, examples, security, coverage matrix, cost limits and pros/cons →](docs/SUPERAGENT.md)
+
+This is a tested **mock-first foundation**, not full article parity or a deployed
+24/7 platform. No live model/container verification or zero-extra-cost guarantee.
+Live use requires approved models/accounts, isolated hosts and external billing
+controls. Worktrees are not security isolation; no automatic merge/deployment or
+PR publishing. Existing `/delegate` handoff and interactive Codex behavior below
+remain available; installation does not start the new service.
+
 ## Safety and routing
 
 1. **Intent first:** plan-only never launches implementation or Codex, including
@@ -75,9 +103,10 @@ SKILL_DIR="$HOME/.claude/skills/delegate"  # or the project-local installation
 bash "$SKILL_DIR/scripts/review-git.sh" status  # or diff, staged, log
 ```
 
-Only those four fixed views are accepted (no arbitrary flags); external diff/text
-converters, pagers, fsmonitor, signature checks and optional index writes are
-avoided. Submodule internals are omitted from diff views. The reviewer remains
+Only those four fixed views are accepted (no arbitrary flags). Configured Git
+clean/process/smudge filters are refused before inspection; lazy fetches and
+transports are disabled. External diff/text converters, pagers, fsmonitor,
+signature checks and optional index writes are avoided. Submodules, including gitlink changes, are excluded from these views and handoff fingerprints. The reviewer remains
 shell-less and can ask for a fresh view. This is deliberate: a subagent tool list
 does not turn Bash into a git-only sandbox; see the official
 [subagent tool restrictions](https://code.claude.com/docs/en/sub-agents#restrict-which-tools-a-subagent-can-use).

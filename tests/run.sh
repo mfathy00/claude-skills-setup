@@ -2,4 +2,4 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bash -n "$ROOT/install.sh" "$ROOT/tests/run.sh" "$ROOT/.claude/skills/delegate/scripts/"*.sh
-python3 -m unittest discover -s "$ROOT/tests" -p 'test_*.py' -v
+(cd "$ROOT" && python3 -m unittest discover -s "$ROOT/tests" -p 'test_*.py' -v)

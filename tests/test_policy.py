@@ -48,7 +48,7 @@ class PolicyContractTests(unittest.TestCase):
         self.assertEqual(set(tools[:6]), {'Read', 'Grep', 'Glob', 'Agent', 'Edit', 'Write'})
         self.assertEqual(set(tools[6:]), {
             f'Bash(bash ${{CLAUDE_SKILL_DIR}}/scripts/{name}.sh *)'
-            for name in ('write-handoff', 'handoff-to-codex', 'review-git')
+            for name in ('write-handoff', 'handoff-to-codex', 'review-git', 'superagent')
         })
         reviewer = (ROOT / '.claude/agents/delegate-reviewer.md').read_text()
         self.assertIn('tools: Read, Grep, Glob\n', reviewer)

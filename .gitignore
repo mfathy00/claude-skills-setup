@@ -9,3 +9,7 @@ __pycache__/
 .claude/handoff-*.md
 .claude/.delegate-backups/
 .claude/.delegate-install.lock/
+
+# Optional runtime state must normally live OUTSIDE all worker workspaces.
+.superagent/
+.superagent-state/

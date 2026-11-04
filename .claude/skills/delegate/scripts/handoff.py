@@ -26,7 +26,21 @@ def fail(message):
 
 
 def git(*args):
-    return subprocess.check_output(['git', '-c', 'core.fsmonitor=false', *args], stderr=subprocess.PIPE)
+    # Status/diff may execute clean filters even with --no-ext-diff/--no-textconv.
+    # Refuse them instead of running repository-configured programs on the host.
+    executable = shutil.which('git', path=os.defpath)
+    if not executable:
+        fail('Git is unavailable on the system executable path')
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+    env.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
+               GIT_TERMINAL_PROMPT='0', GIT_NO_LAZY_FETCH='1', GIT_ALLOW_PROTOCOL='', GIT_NO_REPLACE_OBJECTS='1')
+    prefix = [executable, '--no-pager', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=' + os.devnull,
+              '-c', 'core.untrackedCache=false', '-c', 'protocol.allow=never', '--no-optional-locks']
+    guard = subprocess.run(prefix + ['config', '--includes', '--name-only', '--get-regexp', r'^filter\..*\.(clean|process|smudge)$'],
+                           env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+    if guard.returncode != 1:
+        fail('Git filters configured or configuration unreadable; inspection refused')
+    return subprocess.check_output(prefix + list(args), env=env, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=15)
 
 
 def snapshot():
@@ -34,9 +48,9 @@ def snapshot():
     digest = hashlib.sha256()
     for data in (git('rev-parse', 'HEAD'), git('symbolic-ref', '-q', 'HEAD')
                  if git('rev-parse', '--abbrev-ref', 'HEAD').strip() != b'HEAD' else b'HEAD',
-                 git('status', '--porcelain=v1', '-z', '--untracked-files=all', *PATHSPEC),
-                 git('diff', '--no-ext-diff', '--no-textconv', '--binary', 'HEAD', *PATHSPEC),
-                 git('diff', '--cached', '--no-ext-diff', '--no-textconv', '--binary', 'HEAD', *PATHSPEC)):
+                 git('status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all', *PATHSPEC),
+                 git('diff', '--no-ext-diff', '--no-textconv', '--binary', '--ignore-submodules=all', 'HEAD', *PATHSPEC),
+                 git('diff', '--cached', '--no-ext-diff', '--no-textconv', '--binary', '--ignore-submodules=all', 'HEAD', *PATHSPEC)):
         digest.update(data)
         digest.update(b'\0')
     for name in git('ls-files', '--others', '--exclude-standard', '-z', *PATHSPEC).split(b'\0'):
