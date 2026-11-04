@@ -1,4 +1,4 @@
-﻿# Claude Skills Setup â€” `/delegate`
+﻿# Claude Skills Setup `/delegate`
 
 A small [Claude Code](https://code.claude.com) skill for planning, assigning scoped
 Claude workers, and handing explicitly approved tracks to Codex. It is a set of
